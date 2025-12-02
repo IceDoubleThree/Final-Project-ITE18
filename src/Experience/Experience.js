@@ -7,6 +7,7 @@ import World from "./World/World.js"
 import Resources from "./Utils/Resources.js"
 import sources from "./sources.js"
 import Debug from "./Utils/Debug.js"
+import Input from './Utils/Input.js'
 
 
 let instance = null
@@ -34,7 +35,9 @@ export default class Experience
             console.log(this.sizes.pixelRatio)
         this.time = new Time()
         this.scene = new THREE.Scene()
-        this.resources = new Resources(sources)   
+        this.resources = new Resources(sources) 
+        
+        this.input = new Input()
         this.camera = new Camera()
         this.renderer = new Renderer()
         this.world = new World()

@@ -2,7 +2,8 @@ import * as THREE from "three"
 import * as CANNON from "cannon-es" // Import Cannon for physics
 import Experience from "../Experience.js"
 import Environment from "./Environment.js"
-import TestWorld from "./Locations/TestWorld.js" // 1. Import your TestWorld
+import TestWorld from "./Locations/TestWorld.js"
+import Player from './player.js'
 
 export default class World {
     constructor() {
@@ -16,7 +17,12 @@ export default class World {
 
         // 2. Load TestWorld IMMEDIATELY
         this.testWorld = new TestWorld(this.physicsWorld)
+        this.player = new Player(this.physicsWorld)
         
+        this.experience.input.on('cameraToggle', () => { // Assuming you add 'cameraToggle' to Input.js
+            this.experience.camera.modes.follow = !this.experience.camera.modes.follow
+        })
+
         // 3. Load Environment when resources are ready
         this.resources.on('ready', () => {
             this.environment = new Environment()
@@ -27,15 +33,16 @@ export default class World {
             }
         })
     }
-
+    
     update() {
         if(this.physicsWorld) {
             this.physicsWorld.step(1 / 60, this.experience.time.delta / 1000, 3)
         }
 
-        // 5. Update the Level
         if(this.testWorld) {
             this.testWorld.update()
         }
+
+        if(this.player) this.player.update()
     }
 }
