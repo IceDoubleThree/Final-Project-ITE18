@@ -1,14 +1,16 @@
 import * as THREE from 'three'
 import * as CANNON from 'cannon-es'
 import Experience from '../../Experience.js'
+import PhysicsMaterials from '../PhysicsMaterials.js'
 
 export default class TestWorld {
-    constructor(physicsWorld) {
+    constructor(physicsWorld, materialsManager) {
         console.log('✅ TestWorld is being constructed...')
 
         this.experience = new Experience()
         this.scene = this.experience.scene
         this.physicsWorld = physicsWorld
+        this.materials = materialsManager.materials
 
         // 1. Set the background to White
         this.scene.background = new THREE.Color('#ffffff')
@@ -45,7 +47,8 @@ export default class TestWorld {
         const shape = new CANNON.Plane()
         this.floorBody = new CANNON.Body({
             mass: 0, // Static
-            shape: shape
+            shape: shape,
+            material: this.materials.floor
         })
         
         this.floorBody.quaternion.setFromAxisAngle(new CANNON.Vec3(1, 0, 0), -Math.PI * 0.5)
@@ -70,7 +73,8 @@ export default class TestWorld {
         this.cubeBody = new CANNON.Body({
             mass: 1, // Mass > 0 makes it dynamic (affected by gravity)
             position: new CANNON.Vec3(0, 5, 0),
-            shape: shape
+            shape: shape,
+            material: this.materials.bouncy
         })
         
         // Add rotation so it bounces interestingly
