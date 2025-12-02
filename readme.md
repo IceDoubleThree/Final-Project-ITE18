@@ -1,2 +1,2 @@
 # Production Branch
-## DO NOT PUSH if unfinish
+## Only push for final commits
