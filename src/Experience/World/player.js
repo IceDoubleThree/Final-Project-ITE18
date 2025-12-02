@@ -59,25 +59,55 @@ export default class Player {
     }
 
     update() {
-        // Safety check to ensure input exists
         if(!this.input) return
 
-        const speed = this.input.keys.shift ? 10 : 5
-
-        if(this.input.keys.forward) {
-            this.body.applyForce(new CANNON.Vec3(0, 0, -speed), this.body.position)
-        }
-        if(this.input.keys.backward) {
-            this.body.applyForce(new CANNON.Vec3(0, 0, speed), this.body.position)
-        }
-        if(this.input.keys.left) {
-            this.body.applyForce(new CANNON.Vec3(-speed, 0, 0), this.body.position)
-        }
-        if(this.input.keys.right) {
-            this.body.applyForce(new CANNON.Vec3(speed, 0, 0), this.body.position)
-        }
+        // --- MOVEMENT LOGIC ---
         
+        // 1. Setup Input Vector
+        // WE FLIPPED THESE SIGNS compared to previous code
+        let inputX = 0
+        let inputZ = 0
+
+        // Forward (W) needs to be +1 to align with atan2(0, 1) = 0 degrees
+        if(this.input.keys.forward) inputZ += 1 
+        if(this.input.keys.backward) inputZ -= 1 
+        
+        // Left (A) needs to be +1 to align with atan2(1, 0) = 90 degrees
+        if(this.input.keys.left) inputX += 1     
+        if(this.input.keys.right) inputX -= 1    
+
+        // 2. Only move if keys are pressed
+        if(inputX !== 0 || inputZ !== 0) {
+            
+            // A. Calculate Input Angle (0 = Forward, PI = Backward)
+            const inputAngle = Math.atan2(inputX, inputZ)
+
+            // B. Get Camera Angle
+            const camera = this.experience.camera.instance
+            const cameraDirection = new THREE.Vector3()
+            camera.getWorldDirection(cameraDirection)
+            const cameraAngle = Math.atan2(cameraDirection.x, cameraDirection.z)
+
+            // C. Combine (Camera Rotation + Input Offset)
+            const targetRotation = cameraAngle + inputAngle
+
+            // D. Rotate Player
+            const targetQuaternion = new THREE.Quaternion()
+            targetQuaternion.setFromAxisAngle(new THREE.Vector3(0, 1, 0), targetRotation)
+            this.mesh.quaternion.slerp(targetQuaternion, 0.2)
+
+            // E. Apply Force
+            const speed = this.input.keys.shift ? 10 : 5
+            
+            // Calculate direction based on the new rotation
+            const forceX = Math.sin(targetRotation) * speed
+            const forceZ = Math.cos(targetRotation) * speed
+
+            this.body.applyForce(new CANNON.Vec3(forceX, 0, forceZ), this.body.position)
+        }
+
+        // 3. Sync Physics to Visuals
         this.mesh.position.copy(this.body.position)
-        this.mesh.position.y -= -0.5  // Offset to match sphere center to capsule bottom
+        this.mesh.position.y += 0.5
     }
 }

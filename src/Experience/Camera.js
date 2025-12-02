@@ -9,10 +9,13 @@ export default class Camera {
         this.scene = this.experience.scene
         this.canvas = this.experience.canvas
         
-        // --- NEW: Camera Modes ---
         this.modes = {
-            follow: true, // Default: Follow the player
+            follow: true, 
         }
+
+        // --- NEW: Track previous position ---
+        // We need this to calculate how far the player moved in one frame
+        this.previousPlayerPosition = new THREE.Vector3()
 
         this.setInstance()
         this.setControls()
@@ -32,6 +35,10 @@ export default class Camera {
     setControls() {
         this.controls = new OrbitControls(this.instance, this.canvas)
         this.controls.enableDamping = true
+
+        this.controls.maxPolarAngle = Math.PI / 2 - 0.1
+        this.controls.minDistance = 3 
+        this.controls.maxDistance = 15
     }
 
     resize() {
@@ -40,37 +47,36 @@ export default class Camera {
     }
 
     update() {
-        // Check if player exists (to prevent crash on load)
         const playerExists = this.experience.world && this.experience.world.player
 
         if (this.modes.follow && playerExists) {
-            // --- FOLLOW MODE ---
-            
-            // 1. Disable OrbitControls so they don't fight the follow logic
-            this.controls.enabled = false
-
-            // 2. Get Player Position (Mesh)
-            const playerPosition = this.experience.world.player.mesh.position
-
-            // 3. Calculate Target Position (e.g., 0 units left, 10 up, 10 back)
-            // You can tweak these numbers to change the camera angle
-            const offset = new THREE.Vector3(0, 10, 10)
-            const targetPosition = playerPosition.clone().add(offset)
-
-            // 4. Smoothly move camera (Lerp)
-            // 0.1 = Slow/Cinematic, 1.0 = Instant/Locked
-            this.instance.position.lerp(targetPosition, 0.1)
-
-            // 5. Always look at the player
-            this.instance.lookAt(playerPosition)
-        } 
-        else {
-
-            // 1. Re-enable controls
             this.controls.enabled = true
-            
-            // 2. Update controls for damping
-            this.controls.update()
+
+            // 1. Get Current Player Position
+            const currentPlayerPosition = this.experience.world.player.mesh.position
+
+            // 2. Initialize previous position on the very first frame to prevent camera jumps
+            if (this.previousPlayerPosition.length() === 0 && currentPlayerPosition.length() !== 0) {
+                this.previousPlayerPosition.copy(currentPlayerPosition)
+            }
+
+            // 3. Calculate how much the player moved since last frame (The Delta)
+            const change = new THREE.Vector3()
+            change.subVectors(currentPlayerPosition, this.previousPlayerPosition)
+
+            // 4. Move the Camera by that exact same amount
+            // This drags the camera along with the player, keeping the "Zoom" distance constant
+            this.instance.position.add(change)
+
+            // 5. Move the Orbit Target to the player
+            this.controls.target.copy(currentPlayerPosition)
+            this.controls.target.y += 0.5 // Look slightly up
+
+            // 6. Save current position for the next frame
+            this.previousPlayerPosition.copy(currentPlayerPosition)
         }
+
+        // Always update controls at the end
+        this.controls.update()
     }
 }
