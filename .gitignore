@@ -1,1 +1,9 @@
-.vercel
+# Dependencies
+node_modules/
+package-lock.json
+
+# Production build
+dist/
+
+# System files
+.DS_Store
