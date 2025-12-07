@@ -1,57 +1,25 @@
 {
   "dialogues": {
-    "npc_greeting": {
-      "id": "npc_greeting",
-      "character": "Elder",
-      "sequence": [
-        {
-          "speaker": "Child",
-          "text": "Welcome, traveler! I've been waiting for someone like you."
-        },
-        {
-          "speaker": "Elder",
-          "text": "These lands have been plagued by darkness for far too long."
-        },
-        {
-          "speaker": "Elder",
-          "text": "Will you help us restore peace to our realm?"
-        }
-      ]
-    },
-    "quest_acceptance": {
-      "id": "quest_acceptance",
-      "character": "Quest Giver",
-      "sequence": [
-        {
-          "speaker": "Quest Giver",
-          "text": "You've accepted the quest to find the Lost Artifact."
-        },
-        {
-          "speaker": "Quest Giver",
-          "text": "Head north to the ancient ruins. Be careful out there!"
-        }
-      ]
-    },
     "tutorial_start": {
       "id": "tutorial_start",
       "character": "Guide",
       "sequence": [
-        {
-          "speaker": "Guide",
-          "text": "Let me teach you the basics of movement and combat."
-        },
-        {
-          "speaker": "Guide",
-          "text": "Use WASD to move around the world."
-        },
-        {
-          "speaker": "Guide",
-          "text": "Left click to attack enemies."
-        },
-        {
-          "speaker": "Guide",
-          "text": "Good luck, adventurer!"
-        }
+        { "speaker": "Guide", "text": "Use WASD to move." },
+        { "speaker": "Guide", "text": "Walk up to the NPCs and press F!" }
+      ]
+    },
+    "npc_sakura_intro": {
+      "id": "npc_sakura_intro",
+      "character": "NPC1",
+      "sequence": [
+        { "speaker": "NPC1", "text": "Hello there! I am ______." }
+      ]
+    },
+    "npc_kaito_intro": {
+      "id": "npc_kaito_intro",
+      "character": "NPC2",
+      "sequence": [
+        { "speaker": "NPC2", "text": "Hmph. What do you want?" }
       ]
     }
   }

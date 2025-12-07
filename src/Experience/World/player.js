@@ -302,6 +302,14 @@ export default class Player {
     update() {
         if(!this.input || !this.mesh) return
 
+        // --- NEW: Stop movement if Dialogue is open ---
+        if(this.experience.dialogue.isActive()) {
+            this.body.velocity.x = 0
+            this.body.velocity.z = 0
+            this.updateAnimation(false, false)
+            return // Stop processing movement
+        }
+
         // --- GROUND CHECK (Keep Raycast for walking logic) ---
         const rayOrigin = this.body.position
         const rayEnd = new CANNON.Vec3(rayOrigin.x, rayOrigin.y - 0.5, rayOrigin.z)

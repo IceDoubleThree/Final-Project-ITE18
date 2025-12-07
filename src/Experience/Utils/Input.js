@@ -11,7 +11,8 @@ export default class Input extends EventEmitter {
             left: false,
             right: false,
             jump: false,
-            shift: false
+            shift: false,
+            interact: false // New key
         }
 
         // Listen to DOM events
@@ -25,15 +26,13 @@ export default class Input extends EventEmitter {
     }
 
     keyDown(event) {
-        // --- DEBUG LOG START ---
-        console.log('Key Down:', event.code) 
-        // --- DEBUG LOG END ---
+        // console.log('Key Down:', event.code) 
         
         switch(event.code) {
             case 'ArrowUp':
             case 'KeyW':
                 this.keys.forward = true
-                this.trigger('forwardStart') // Signal that movement started
+                this.trigger('forwardStart')
                 break
 
             case 'ArrowLeft':
@@ -52,10 +51,9 @@ export default class Input extends EventEmitter {
                 break
 
             case 'Space':
-                // Only trigger jump once per press (prevent holding space to fly)
                 if(this.keys.jump === false) {
                     this.keys.jump = true
-                    this.trigger('jump') // Signal to jump
+                    this.trigger('jump')
                 }
                 break
             
@@ -63,6 +61,14 @@ export default class Input extends EventEmitter {
             case 'ShiftRight':
                 this.keys.shift = true
                 break
+
+           case 'KeyF':
+            console.log('F Key detected in Input.js') 
+            if(this.keys.interact === false) {
+                this.keys.interact = true
+                this.trigger('interact')
+            }
+            break
         }
     }
 
@@ -96,13 +102,17 @@ export default class Input extends EventEmitter {
             case 'ShiftRight':
                 this.keys.shift = false
                 break
+
+            // --- NEW: Interaction Key ---
+            case 'KeyF':
+                this.keys.interact = false
+                break
         }
     }
     
     destroy() {
-        // Clean up event listeners
         window.removeEventListener('keydown')
         window.removeEventListener('keyup')
-        this.off() // Clears all EventEmitter callbacks
+        this.off()
     }
 }

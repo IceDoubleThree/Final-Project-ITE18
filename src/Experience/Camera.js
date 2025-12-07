@@ -13,8 +13,9 @@ export default class Camera {
             follow: true, 
         }
 
-        // --- NEW: Track previous position ---
+        // --- Track previous position ---
         // We need this to calculate how far the player moved in one frame
+        // so we can move the camera by the exact same amount.
         this.previousPlayerPosition = new THREE.Vector3()
 
         this.setInstance()
@@ -28,6 +29,7 @@ export default class Camera {
             0.1,
             100
         )
+        // Default position before player loads
         this.instance.position.set(6, 4, 8)
         this.scene.add(this.instance)
     }
@@ -36,7 +38,10 @@ export default class Camera {
         this.controls = new OrbitControls(this.instance, this.canvas)
         this.controls.enableDamping = true
 
+        // Prevent camera from going under the floor
         this.controls.maxPolarAngle = Math.PI / 2 - 0.1
+        
+        // Zoom constraints
         this.controls.minDistance = 3 
         this.controls.maxDistance = 15
     }
@@ -47,7 +52,10 @@ export default class Camera {
     }
 
     update() {
-        const playerExists = this.experience.world && this.experience.world.player && this.experience.world.player.mesh
+        // Check if player mesh is actually loaded to avoid errors
+        const playerExists = this.experience.world && 
+                             this.experience.world.player && 
+                             this.experience.world.player.mesh
 
         if (this.modes.follow && playerExists) {
             this.controls.enabled = true
@@ -56,6 +64,7 @@ export default class Camera {
             const currentPlayerPosition = this.experience.world.player.mesh.position
 
             // 2. Initialize previous position on the very first frame to prevent camera jumps
+            // .length() === 0 checks if vector is (0,0,0)
             if (this.previousPlayerPosition.length() === 0 && currentPlayerPosition.length() !== 0) {
                 this.previousPlayerPosition.copy(currentPlayerPosition)
             }
@@ -70,13 +79,13 @@ export default class Camera {
 
             // 5. Move the Orbit Target to the player
             this.controls.target.copy(currentPlayerPosition)
-            this.controls.target.y += 2 // Look at chest/head area instead of legs
+            this.controls.target.y += 1.5 // Look at chest/head area instead of feet
 
             // 6. Save current position for the next frame
             this.previousPlayerPosition.copy(currentPlayerPosition)
         }
 
-        // Always update controls at the end
+        // Always update controls at the end for damping to work
         this.controls.update()
     }
 }
