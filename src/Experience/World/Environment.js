@@ -26,8 +26,8 @@ export default class Environment {
         this.sunLight.position.set(3, 3, -2.25)
         this.scene.add(this.sunLight)
 
-        // Debug Sun
-        if(this.debug.active) {
+        // Debug Sun (only if debug is active and folder exists)
+        if(this.debug.active && this.debugFolder) {
             this.debugFolder.add(this.sunLight, 'intensity').min(0).max(10).step(0.001).name('sunIntensity')
             this.debugFolder.add(this.sunLight.position, 'x').min(-5).max(5).step(0.001).name('sunX')
             this.debugFolder.add(this.sunLight.position, 'y').min(-5).max(5).step(0.001).name('sunY')
@@ -67,7 +67,7 @@ export default class Environment {
         this.environmentMap.updateMaterials()
 
         // Debug Environment Map
-        if(this.debug.active && this.environmentMap.texture) {
+        if(this.debug.active && this.debugFolder && this.environmentMap.texture) {
             this.debugFolder.add(this.environmentMap, 'intensity')
                 .name('envMapIntensity')
                 .min(0).max(4).step(0.001)

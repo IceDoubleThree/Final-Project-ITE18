@@ -47,7 +47,7 @@ export default class Camera {
     }
 
     update() {
-        const playerExists = this.experience.world && this.experience.world.player
+        const playerExists = this.experience.world && this.experience.world.player && this.experience.world.player.mesh
 
         if (this.modes.follow && playerExists) {
             this.controls.enabled = true
@@ -70,7 +70,7 @@ export default class Camera {
 
             // 5. Move the Orbit Target to the player
             this.controls.target.copy(currentPlayerPosition)
-            this.controls.target.y += 0.5 // Look slightly up
+            this.controls.target.y += 2 // Look at chest/head area instead of legs
 
             // 6. Save current position for the next frame
             this.previousPlayerPosition.copy(currentPlayerPosition)
