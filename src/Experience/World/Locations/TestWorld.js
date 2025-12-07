@@ -28,6 +28,9 @@ export default class TestWorld {
 
         const gridHelper = new THREE.GridHelper(100, 100)
         this.group.add(gridHelper)
+
+        // Trigger tutorial dialogue when world loads
+        this.experience.dialogue.read('tutorial_start')
     }
 
     setFloor() {

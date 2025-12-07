@@ -8,6 +8,7 @@ import Resources from "./Utils/Resources.js"
 import sources from "./sources.js"
 import Debug from "./Utils/Debug.js"
 import Input from './Utils/Input.js'
+import DialogueReader from './Utils/DialogueReader.js'
 
 
 let instance = null
@@ -38,6 +39,7 @@ export default class Experience
         this.resources = new Resources(sources) 
         
         this.input = new Input()
+        this.dialogue = new DialogueReader()
         this.camera = new Camera()
         this.renderer = new Renderer()
         this.world = new World()
