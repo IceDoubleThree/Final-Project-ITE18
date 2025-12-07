@@ -17,12 +17,12 @@ export default class Renderer {
             canvas: this.canvas,
             antialias: true
         })
-        this.instance.physicallyCorrectLights = true
+        this.instance.physicallyCorrectLights = false // Disable for anime style
         this.instance.outputEncoding = THREE.sRGBEncoding
-        this.instance.toneMapping = THREE.CineonToneMapping
-        this.instance.toneMappingExposure = 1.75
+        this.instance.toneMapping = THREE.ACESFilmicToneMapping // Better for anime aesthetic
+        this.instance.toneMappingExposure = 1.2 // Slightly reduced for anime look
         this.instance.shadowMap.enabled = true
-        this.instance.shadowMap.type = THREE.PCFSoftShadowMap
+        this.instance.shadowMap.type = THREE.PCFSoftShadowMap // Soft shadows for anime style
         this.instance.setSize(this.sizes.width, this.sizes.height)
         this.instance.setPixelRatio(Math.min(this.sizes.pixelRatio, 2))
     }

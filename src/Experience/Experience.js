@@ -31,9 +31,6 @@ export default class Experience
         // Setup
         this.debug = new Debug()
         this.sizes = new Sizes()
-            console.log(this.sizes.width)
-            console.log(this.sizes.height)
-            console.log(this.sizes.pixelRatio)
         this.time = new Time()
         this.scene = new THREE.Scene()
         this.resources = new Resources(sources) 
@@ -48,7 +45,6 @@ export default class Experience
 
         // Resize event
         this.sizes.on('resize', () => {
-            console.log('A resize occurred')
             this.resize()
         })
 
@@ -57,35 +53,37 @@ export default class Experience
             this.update()
         })
     }
+    
     resize() {
         this.camera.resize()
         this.renderer.resize()
     }
 
     update() {
-        this.camera.update()
+        // 1. UPDATE PHYSICS & PLAYER FIRST
+        // The player must move to their new position...
         this.world.update()
+        
+        // 2. UPDATE CAMERA SECOND
+        // ...so the camera can look at where the player IS, not where they WERE.
+        this.camera.update()
+        
+        // 3. RENDER LAST
         this.renderer.update()
     }
 
     destroy() {
-    // Remove event listeners
         this.sizes.off('resize')
         this.time.off('tick')
         this.camera.controls.dispose()
         this.renderer.instance.dispose()
 
-        
         this.scene.traverse((child) => {
-            // Test if it's a mesh
             if (child instanceof THREE.Mesh)
             {
                 child.geometry.dispose()
-
-                // Loop through the material properties
                 for (const key in child.material) {
                     const value = child.material[key]
-                    // Test if there is a dispose function
                     if (value && typeof value.dispose === 'function') {
                         value.dispose()
                     }

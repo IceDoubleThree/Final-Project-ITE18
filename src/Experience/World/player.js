@@ -9,7 +9,7 @@ export default class Player {
         this.physicsWorld = physicsWorld
         this.time = this.experience.time
         this.materials = materialsManager.materials
-        this.input = this.experience.input 
+        this.input = this.experience.input
         this.resources = this.experience.resources
 
         this.canJump = false // State
@@ -20,7 +20,7 @@ export default class Player {
         this.mixer = null
         this.actions = {}
         this.currentAction = null
-        
+
         // Physics configuration (capsule)
         this.physicsConfig = {
             radius: 0.3,
@@ -29,7 +29,7 @@ export default class Player {
             offsetY: -1.1,
             offsetZ: 0
         }
-        
+
         this.debugVisuals = {
             physicsMesh: null,
             boundingBox: null,
@@ -53,14 +53,14 @@ export default class Player {
         if (!this.debug.active) return
 
         const debugFolder = this.debug.ui.addFolder('Player')
-        
+
         // Physics configuration
         debugFolder.add(this.physicsConfig, 'radius').min(0.1).max(1).step(0.1).name('Physics Radius')
         debugFolder.add(this.physicsConfig, 'height').min(0.5).max(3).step(0.1).name('Physics Height')
         debugFolder.add(this.physicsConfig, 'offsetX').min(-1).max(1).step(0.1).name('Offset X')
         debugFolder.add(this.physicsConfig, 'offsetY').min(-1).max(1).step(0.1).name('Offset Y')
         debugFolder.add(this.physicsConfig, 'offsetZ').min(-1).max(1).step(0.1).name('Offset Z')
-        
+
         // Physics mesh toggle
         debugFolder.add(this.debugVisuals, 'showPhysics').onChange((value) => {
             if (value) {
@@ -129,53 +129,65 @@ export default class Player {
             console.log('Available resources:', Object.keys(this.resources.items))
             return
         }
-        
+
         this.mesh = model.scene
         this.animations = model.animations // Get animations from GLTF loader result
+
+        // Enable shadow mapping for player - traverse all meshes
+        this.mesh.traverse((child) => {
+            if (child instanceof THREE.Mesh) {
+                child.castShadow = true
+                child.receiveShadow = true // Player should also receive shadows
+            }
+        })
+
+        // Also set on root for safety
         this.mesh.castShadow = true
+        this.mesh.receiveShadow = true
+
         this.mesh.position.y = 5
-        
+
         // Scale the model if needed
         this.mesh.scale.set(1, 1, 1)
-        
+
         // Log model details for debugging
         console.log('✅ Model loaded:', this.mesh)
         console.log('Model position:', this.mesh.position)
         console.log('Model scale:', this.mesh.scale)
-        
+
         this.scene.add(this.mesh)
-        
+
         // Calculate and store model center offset
         const bbox = new THREE.Box3().setFromObject(this.mesh)
         this.modelCenterOffset = bbox.getCenter(new THREE.Vector3()).sub(this.mesh.position)
         console.log('Model center offset:', this.modelCenterOffset)
-        
+
         // Setup animations
         this.setupAnimations()
     }
 
     setupAnimations() {
         if (!this.mesh) return
-        
+
         // Create AnimationMixer
         this.mixer = new THREE.AnimationMixer(this.mesh)
-        
+
         // Get animations from the GLTF loader result
         if (this.animations && this.animations.length > 0) {
             console.log('✅ Available animations:')
             this.animations.forEach(clip => {
                 console.log(`  - ${clip.name} (${clip.duration}s)`)
             })
-            
+
             // Create actions for available animations
             this.animations.forEach(clip => {
                 const action = this.mixer.clipAction(clip)
                 action.loop = THREE.LoopRepeat
                 this.actions[clip.name.toLowerCase()] = action
             })
-            
+
             console.log('📋 Stored animation keys:', Object.keys(this.actions))
-            
+
             // Start with idle if available
             if (this.actions.idle) {
                 this.currentAction = this.actions.idle
@@ -197,39 +209,39 @@ export default class Player {
     playAnimation(animationName) {
         // Try exact match first
         let newAction = this.actions[animationName]
-        
+
         // If not found, try case-insensitive and partial matching
         if (!newAction) {
             const targetLower = animationName.toLowerCase()
-            const matchedKey = Object.keys(this.actions).find(key => 
+            const matchedKey = Object.keys(this.actions).find(key =>
                 key.toLowerCase().includes(targetLower)
             )
             newAction = matchedKey ? this.actions[matchedKey] : null
         }
-        
+
         if (!newAction) {
             console.warn(`⚠️ Animation "${animationName}" not available. Available: ${Object.keys(this.actions).join(', ')}`)
             return
         }
-        
+
         if (newAction === this.currentAction) return
-        
+
         // Smooth transition between animations
         if (this.currentAction) {
             this.currentAction.fadeOut(0.3)
         }
-        
+
         newAction.reset()
         newAction.fadeIn(0.3)
         newAction.play()
-        
+
         this.currentAction = newAction
         console.log(`🎬 Playing ${animationName}`)
     }
 
     updateAnimation(isMoving, isRunning) {
         if (!this.mixer || Object.keys(this.actions).length === 0) return
-        
+
         if (!isMoving) {
             this.playAnimation('idle')
         } else if (isRunning) {
@@ -237,7 +249,7 @@ export default class Player {
         } else {
             this.playAnimation('walking')
         }
-        
+
         // Update mixer with delta time
         this.mixer.update(this.time.delta / 1000)
     }
@@ -247,36 +259,36 @@ export default class Player {
         // We'll use a sphere body but position a capsule visualization
         // For more accurate capsule physics, we'd need to use a cylinder + spheres compound shape
         // For now, we'll create a compound body with two spheres (top and bottom) and a cylinder
-        
+
         // Create a compound shape with two spheres
         const sphereShape = new CANNON.Sphere(this.physicsConfig.radius)
-        
+
         this.body = new CANNON.Body({
             mass: 1,
             position: new CANNON.Vec3(0, 5, 0),
             material: this.materials.player,
-            linearDamping: 0.1, 
+            linearDamping: 0.1,
             angularDamping: 0.1
         })
-        
+
         // Add sphere shape with offset to create capsule effect
         const halfHeight = this.physicsConfig.height / 2 - this.physicsConfig.radius
         this.body.addShape(sphereShape, new CANNON.Vec3(this.physicsConfig.offsetX, halfHeight + this.physicsConfig.offsetY, this.physicsConfig.offsetZ))
         this.body.addShape(sphereShape, new CANNON.Vec3(this.physicsConfig.offsetX, -halfHeight + this.physicsConfig.offsetY, this.physicsConfig.offsetZ))
-        
-        this.body.fixedRotation = true 
+
+        this.body.fixedRotation = true
         this.body.updateMassProperties()
-        
+
         // --- FIX 1: Add Collision Listener ---
         // This catches the exact frame we hit a bouncy object, 
         // even if the physics engine pushes us away instantly.
         this.body.addEventListener('collide', (e) => {
             // Get the contact normal (Direction of impact)
             const contactNormal = new CANNON.Vec3()
-            e.contact.ni.negate(contactNormal) 
+            e.contact.ni.negate(contactNormal)
 
             // If contactNormal.y > 0.5, the hit came from below (The Floor)
-            if(contactNormal.y > 0.5) {
+            if (contactNormal.y > 0.5) {
                 this.canJump = true
             }
         })
@@ -285,25 +297,25 @@ export default class Player {
     }
 
     jump() {
-        if(this.canJump) {
+        if (this.canJump) {
             // --- FIX 2: Respect Bounciness ---
             // If we are already flying up (from a bounce), add to it.
             // If we are standing still, set it to 5.
-            if(this.body.velocity.y < 5) {
+            if (this.body.velocity.y < 5) {
                 this.body.velocity.y = 5
             } else {
                 // Optional: Super jump if bouncing?
                 // this.body.velocity.y += 2
             }
-            this.canJump = false 
+            this.canJump = false
         }
     }
 
     update() {
-        if(!this.input || !this.mesh) return
+        if (!this.input || !this.mesh) return
 
         // --- NEW: Stop movement if Dialogue is open ---
-        if(this.experience.dialogue.isActive()) {
+        if (this.experience.dialogue.isActive()) {
             this.body.velocity.x = 0
             this.body.velocity.z = 0
             this.updateAnimation(false, false)
@@ -315,14 +327,14 @@ export default class Player {
         const rayEnd = new CANNON.Vec3(rayOrigin.x, rayOrigin.y - 0.5, rayOrigin.z)
         const ray = new CANNON.Ray(rayOrigin, rayEnd)
         const result = new CANNON.RaycastResult()
-        
+
         const hasHit = this.physicsWorld.raycastClosest(rayOrigin, rayEnd, {
             skipBackfaces: true
         }, result)
 
         // Only overwrite canJump if the Raycast hits. 
         // If Raycast misses, we might still have canJump=true from the collision event above.
-        if(hasHit) {
+        if (hasHit) {
             this.canJump = true
         }
 
@@ -330,15 +342,15 @@ export default class Player {
         let inputX = 0
         let inputZ = 0
 
-        if(this.input.keys.forward) inputZ += 1 
-        if(this.input.keys.backward) inputZ -= 1 
-        if(this.input.keys.left) inputX += 1     
-        if(this.input.keys.right) inputX -= 1    
+        if (this.input.keys.forward) inputZ += 1
+        if (this.input.keys.backward) inputZ -= 1
+        if (this.input.keys.left) inputX += 1
+        if (this.input.keys.right) inputX -= 1
 
         const isMoving = inputX !== 0 || inputZ !== 0
         const isRunning = isMoving && this.input.keys.shift
 
-        if(isMoving) {
+        if (isMoving) {
             const inputAngle = Math.atan2(inputX, inputZ)
             const camera = this.experience.camera.instance
             const cameraDirection = new THREE.Vector3()
@@ -350,8 +362,8 @@ export default class Player {
             targetQuaternion.setFromAxisAngle(new THREE.Vector3(0, 1, 0), targetRotation)
             this.mesh.quaternion.slerp(targetQuaternion, 0.2)
 
-            const speed = isRunning ? 6 : 3 
-            
+            const speed = isRunning ? 6 : 3
+
             this.body.velocity.x = Math.sin(targetRotation) * speed
             this.body.velocity.z = Math.cos(targetRotation) * speed
         } else {
@@ -377,10 +389,10 @@ export default class Player {
             const bbox = new THREE.Box3().setFromObject(this.mesh)
             const size = bbox.getSize(new THREE.Vector3())
             const center = bbox.getCenter(new THREE.Vector3())
-            
+
             // Update position
             this.debugVisuals.boundingBox.position.copy(center)
-            
+
             // Update scale to match the bounding box size
             this.debugVisuals.boundingBox.scale.set(size.x, size.y, size.z)
         }
