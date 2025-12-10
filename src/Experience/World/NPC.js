@@ -8,7 +8,7 @@ export default class NPC {
         this.scene = this.experience.scene
         this.world = world
         this.physicsWorld = this.world.physicsWorld
-        this.materials = this.world.materials.materials 
+        this.materials = this.world.materials.materials
         this.input = this.experience.input
         this.dialogue = this.experience.dialogue
 
@@ -16,21 +16,21 @@ export default class NPC {
         this.color = color
         this.name = name
         this.dialogueId = dialogueId
-        
+
         this.interactionDistance = 2.5
         this.isPlayerClose = false
 
         this.setMesh()
         this.setPhysics()
         this.createPromptElement()
-        
+
         // --- DEBUG: Listen for Interaction ---
         this.input.on('interact', () => {
             // Log interaction attempt
-            if(this.isPlayerClose) {
+            if (this.isPlayerClose) {
                 console.log(`[NPC ${this.name}] 'F' key pressed.`)
-                
-                if(this.dialogue.isActive()) {
+
+                if (this.dialogue.isActive()) {
                     console.warn(`[NPC ${this.name}] Cannot talk: Dialogue system is BUSY. (Did you finish the tutorial text?)`)
                 } else {
                     console.log(`[NPC ${this.name}] Triggering dialogue: ${this.dialogueId}`)
@@ -43,11 +43,11 @@ export default class NPC {
     setMesh() {
         const geometry = new THREE.CapsuleGeometry(0.3, 1.0, 4, 8)
         const material = new THREE.MeshStandardMaterial({ color: this.color })
-        
+
         this.mesh = new THREE.Mesh(geometry, material)
         this.mesh.castShadow = true
         this.mesh.position.copy(this.initialPosition)
-        this.mesh.position.y += 0.8 
+        this.mesh.position.y += 0.8
         this.scene.add(this.mesh)
     }
 
@@ -79,21 +79,21 @@ export default class NPC {
     }
 
     update() {
-        if(!this.world.player || !this.world.player.mesh) return
+        if (!this.world.player || !this.world.player.mesh) return
 
         const playerPos = this.world.player.mesh.position
         const npcPos = this.mesh.position
-        
+
         const distance = Math.sqrt(
-            Math.pow(playerPos.x - npcPos.x, 2) + 
+            Math.pow(playerPos.x - npcPos.x, 2) +
             Math.pow(playerPos.z - npcPos.z, 2)
         )
 
-        if(distance < this.interactionDistance) {
+        if (distance < this.interactionDistance) {
             this.isPlayerClose = true
-            
+
             // Only show prompt if dialogue isn't currently open
-            if(!this.dialogue.isActive()) {
+            if (!this.dialogue.isActive()) {
                 this.prompt.classList.add('visible')
             } else {
                 this.prompt.classList.remove('visible')

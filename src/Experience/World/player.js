@@ -362,7 +362,7 @@ export default class Player {
             targetQuaternion.setFromAxisAngle(new THREE.Vector3(0, 1, 0), targetRotation)
             this.mesh.quaternion.slerp(targetQuaternion, 0.2)
 
-            const speed = isRunning ? 6 : 3
+            const speed = isRunning ? 10 : 3
 
             this.body.velocity.x = Math.sin(targetRotation) * speed
             this.body.velocity.z = Math.cos(targetRotation) * speed

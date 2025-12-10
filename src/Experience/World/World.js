@@ -73,7 +73,7 @@ export default class World {
                 key: 'Store',
                 origin: new THREE.Vector3(-50, 0, 0), // 50 blocks west
                 size: { width: 50, depth: 50 },
-                background: '#222222',
+                background: 'skyblue',
                 build: (state) => this.buildStore(state)
             }
         }
@@ -120,7 +120,6 @@ export default class World {
 
     buildLocation(config) {
         const group = new THREE.Group()
-        group.position.copy(config.origin)
         this.scene.add(group)
 
         // Apply environment per location
@@ -141,6 +140,7 @@ export default class World {
         // Debug perimeter helper
         if (this.debug?.active) {
             const perimeter = this.createPerimeterHelper(config.size)
+            perimeter.position.copy(config.origin)
             group.add(perimeter)
             state.disposables.push(perimeter.geometry, perimeter.material)
         }
@@ -199,6 +199,7 @@ export default class World {
         const floorMesh = new THREE.Mesh(floorGeometry, floorMaterial)
         floorMesh.rotation.x = -Math.PI * 0.5
         floorMesh.receiveShadow = true
+        floorMesh.position.copy(state.origin)
         state.group.add(floorMesh)
 
         const floorShape = new CANNON.Plane()
@@ -216,6 +217,7 @@ export default class World {
         const cubeMaterial = new THREE.MeshStandardMaterial({ color: 'red' })
         const cubeMesh = new THREE.Mesh(cubeGeometry, cubeMaterial)
         cubeMesh.castShadow = true
+        cubeMesh.position.set(state.origin.x, state.origin.y + 5, state.origin.z)
         state.group.add(cubeMesh)
 
         const cubeShape = new CANNON.Box(new CANNON.Vec3(0.5, 0.5, 0.5))
@@ -230,18 +232,18 @@ export default class World {
 
         // Grid helper for orientation (debug-friendly)
         const gridHelper = new THREE.GridHelper(Math.max(state.size.width, state.size.depth) * 2, 20)
+        gridHelper.position.copy(state.origin)
         state.group.add(gridHelper)
 
         // NPCs
         const npcPositions = [
-            { pos: new THREE.Vector3(2, 0, 2), color: '#ff69b4', name: 'NPC1', dialogue: 'npc_sakura_intro' },
-            { pos: new THREE.Vector3(-3, 0, 5), color: '#4169e1', name: 'NPC2', dialogue: 'npc_kaito_intro' }
+            { pos: new THREE.Vector3(32, 0, 2), color: '#ff69b4', name: 'NPC1', dialogue: 'npc_sakura_intro' },
+            { pos: new THREE.Vector3(27, 0, 5), color: '#4169e1', name: 'NPC2', dialogue: 'npc_kaito_intro' }
         ]
 
         npcPositions.forEach(def => {
-            const worldPos = new THREE.Vector3().copy(state.origin).add(def.pos)
-            const npc = new NPC(this, worldPos, def.color, def.name, def.dialogue)
-            state.group.attach(npc.mesh) // keep world position but parent to group for local frame
+            const npc = new NPC(this, def.pos, def.color, def.name, def.dialogue)
+            state.group.attach(npc.mesh)
             state.npcs.push(npc)
         })
 
@@ -256,13 +258,10 @@ export default class World {
         )
         state.physicsBodies.push(floorBody, cubeBody)
 
-        const tmpVec = new THREE.Vector3()
         return {
             update: () => {
-                // Sync cube visual to physics (convert to local space)
-                tmpVec.copy(cubeBody.position)
-                tmpVec.sub(state.origin)
-                cubeMesh.position.copy(tmpVec)
+                // Sync cube visual to physics (global space)
+                cubeMesh.position.copy(cubeBody.position)
                 cubeMesh.quaternion.copy(cubeBody.quaternion)
 
                 // Update NPCs
@@ -275,12 +274,13 @@ export default class World {
     }
 
     buildStore(state) {
-        // Store model (local space)
+        // Store model (global positioning)
         const resource = this.resources.items.storeModel
         let model = null
         if (resource?.scene) {
             model = resource.scene
             model.scale.set(1, 1, 1)
+            model.position.copy(state.origin)
             state.group.add(model)
 
             model.traverse((child) => {
