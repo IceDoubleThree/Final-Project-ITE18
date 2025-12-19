@@ -8,5 +8,15 @@ export default [
         name: 'storeModel',
         type: 'gltfModel',
         path: '/models/Store1.glb'
+    },
+    {
+        name: 'roomModel',
+        type: 'gltfModel',
+        path: '/models/room.glb'
+    },
+    {
+        name: 'storeSky',
+        type: 'texture',
+        path: '/textures/citrus_orchard_road_puresky_2k.png'
     }
 ]

@@ -9,6 +9,25 @@
 </head>
 
 <body>
+    <!-- Main Menu Overlay -->
+    <div id="main-menu" class="main-menu">
+        <div class="main-menu-panel">
+            <h1 class="main-menu-title">My Game</h1>
+            <p class="main-menu-subtitle">Development Build</p>
+
+            <div class="main-menu-buttons">
+                <button id="btn-start-game" class="menu-button primary">Start Game</button>
+                <button id="btn-settings" class="menu-button">Settings</button>
+                <button id="btn-help" class="menu-button">Help</button>
+                <button id="btn-credits" class="menu-button">Credits</button>
+            </div>
+
+            <div class="main-menu-placeholder" id="main-menu-placeholder">
+                <p>Select Settings, Help, or Credits to see placeholder info.</p>
+            </div>
+        </div>
+    </div>
+
     <canvas class="webgl"></canvas>
     <script type="module" src="./script.js"></script>
 </body>

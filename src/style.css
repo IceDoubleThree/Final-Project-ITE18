@@ -201,3 +201,75 @@ body
 .dev-menu button:hover {
     background: #ff8c5a;
 }
+
+/* Main Menu Overlay */
+.main-menu {
+    position: fixed;
+    inset: 0;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    background: radial-gradient(circle at top, rgba(255, 244, 230, 0.9), rgba(255, 218, 185, 0.95));
+    z-index: 3000;
+}
+
+.main-menu.hidden {
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.3s ease;
+}
+
+.main-menu-panel {
+    background: rgba(255, 255, 255, 0.9);
+    border-radius: 20px;
+    padding: 30px 40px;
+    box-shadow: 0 15px 40px rgba(0, 0, 0, 0.25);
+    text-align: center;
+    min-width: 320px;
+    max-width: 480px;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+}
+
+.main-menu-title {
+    font-size: 28px;
+    margin-bottom: 8px;
+    color: #d97a4a;
+}
+
+.main-menu-subtitle {
+    font-size: 14px;
+    margin-bottom: 20px;
+    color: #666;
+}
+
+.main-menu-buttons {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin-bottom: 15px;
+}
+
+.menu-button {
+    padding: 10px 18px;
+    border-radius: 999px;
+    border: none;
+    background: #ffa07a;
+    color: #000;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.2s ease, transform 0.1s ease;
+}
+
+.menu-button.primary {
+    background: #ff8c5a;
+}
+
+.menu-button:hover {
+    background: #ff7a3b;
+    transform: translateY(-1px);
+}
+
+.main-menu-placeholder {
+    font-size: 13px;
+    color: #555;
+}

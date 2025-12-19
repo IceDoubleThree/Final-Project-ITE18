@@ -42,6 +42,8 @@ export default class Experience
         this.world = new World()
         console.log('✅ World Created:', this.world)
 
+        this._pendingStartGame = false
+
 
         // Resize event
         this.sizes.on('resize', () => {
@@ -53,7 +55,12 @@ export default class Experience
             this.update()
         })
     }
-    
+
+    startGame() {
+        console.log('🎮 Start game requested from main menu')
+        this._pendingStartGame = true
+    }
+
     resize() {
         this.camera.resize()
         this.renderer.resize()
@@ -70,6 +77,13 @@ export default class Experience
         
         // 3. RENDER LAST
         this.renderer.update()
+
+        // 4. Start game once world and resources are ready
+        if (this._pendingStartGame && this.world && this.world.environment) {
+            // For dev: start in the current World.js default
+            this.world.loadLocation('TestWorld')
+            this._pendingStartGame = false
+        }
     }
 
     destroy() {

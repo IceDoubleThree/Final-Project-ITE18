@@ -74,7 +74,15 @@ export default class World {
                 origin: new THREE.Vector3(-50, 0, 0), // 50 blocks west
                 size: { width: 50, depth: 50 },
                 background: 'skyblue',
+                backgroundTextureKey: 'storeSky',
                 build: (state) => this.buildStore(state)
+            },
+            Room: {
+                key: 'Room',
+                origin: new THREE.Vector3(0, 0, 50), // Slightly below ground
+                size: { width: 50, depth: 50 },
+                background: '#ffffff',
+                build: (state) => this.buildRoom(state)
             }
         }
     }
@@ -123,7 +131,21 @@ export default class World {
         this.scene.add(group)
 
         // Apply environment per location
-        this.scene.background = config.background ? new THREE.Color(config.background) : null
+        if (config.backgroundTextureKey) {
+            const tex = this.resources.items[config.backgroundTextureKey]
+            if (tex) {
+                // Ensure correct color space for skies
+                if ('colorSpace' in tex) tex.colorSpace = THREE.SRGBColorSpace
+                else tex.encoding = THREE.sRGBEncoding
+                this.scene.background = tex
+            } else if (config.background) {
+                this.scene.background = new THREE.Color(config.background)
+            } else {
+                this.scene.background = null
+            }
+        } else {
+            this.scene.background = config.background ? new THREE.Color(config.background) : null
+        }
         this.scene.fog = config.fog ? new THREE.Fog(config.fog.color, config.fog.near, config.fog.far) : null
 
         const state = {
@@ -319,6 +341,52 @@ export default class World {
         }
     }
 
+    buildRoom(state) {
+        const resource = this.resources.items.roomModel
+        let model = null
+
+        if (resource?.scene) {
+            model = resource.scene
+            model.scale.set(0.12, 0.12, 0.12)
+            model.position.copy(state.origin)
+            model.position.y = -0.2
+            state.group.add(model)
+
+            model.traverse((child) => {
+                if (child instanceof THREE.Mesh) {
+                    child.castShadow = true
+                    child.receiveShadow = true
+                }
+            })
+        }
+
+        const floorShape = new CANNON.Plane()
+        const floorBody = new CANNON.Body({
+            mass: 0,
+            shape: floorShape,
+            material: this.materials.materials.floor
+        })
+        floorBody.position.set(state.origin.x, state.origin.y, state.origin.z)
+        floorBody.quaternion.setFromAxisAngle(new CANNON.Vec3(1, 0, 0), -Math.PI * 0.5)
+        this.physicsWorld.addBody(floorBody)
+        state.physicsBodies.push(floorBody)
+
+        return {
+            update: () => { },
+            cleanup: () => {
+                if (model) {
+                    model.traverse((child) => {
+                        if (child instanceof THREE.Mesh) {
+                            if (child.geometry) child.geometry.dispose()
+                            if (child.material?.map) child.material.map.dispose()
+                            if (child.material?.dispose) child.material.dispose()
+                        }
+                    })
+                }
+            }
+        }
+    }
+
     update() {
         // Only step physics if a location is actually loaded
         if (this.physicsWorld && this.isPhysicsActive) {
@@ -329,8 +397,6 @@ export default class World {
             this.currentLocation.updates?.forEach(fn => fn())
         }
 
-        // Always update player (animations, input) even if physics is paused
-        // (Optional: You can wrap this in isPhysicsActive if you want to freeze animations too)
         if (this.player) {
             this.player.update()
         }
