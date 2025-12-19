@@ -15,6 +15,11 @@ export default [
         path: '/models/room.glb'
     },
     {
+        name: 'stageModel',
+        type: 'gltfModel',
+        path: '/models/room.glb' 
+    },
+    {
         name: 'storeSky',
         type: 'texture',
         path: '/textures/citrus_orchard_road_puresky_2k.png'

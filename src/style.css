@@ -8,6 +8,7 @@ html,
 body
 {
     overflow: hidden;
+    background-color: #000; /* Ensure page bg is black */
 }
 
 .webgl
@@ -18,7 +19,25 @@ body
     outline: none;
 }
 
-/* Dialogue System Styles */
+/* --- NEW: Fade Transition Overlay --- */
+.black-screen {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-color: #000000;
+    z-index: 2999; /* Below Main Menu (3000), Above Canvas */
+    opacity: 1;
+    transition: opacity 2.5s ease-out; /* Slow fade out duration */
+    pointer-events: none;
+}
+
+.black-screen.fade-out {
+    opacity: 0;
+}
+
+/* ... (Keep your existing dialogue styles below) ... */
 .dialogue-container {
     position: fixed;
     bottom: 0;
@@ -107,12 +126,9 @@ body
     }
 }
 
-/* ... existing css ... */
-
-/* Interaction Prompt */
 .interact-prompt {
     position: fixed;
-    top: 60%; /* Position slightly below center or above player head logic */
+    top: 60%;
     left: 50%;
     transform: translate(-50%, -50%);
     background-color: rgba(0, 0, 0, 0.7);
@@ -122,7 +138,7 @@ body
     font-family: 'Segoe UI', sans-serif;
     font-weight: bold;
     font-size: 14px;
-    pointer-events: none; /* Let clicks pass through */
+    pointer-events: none;
     opacity: 0;
     transition: opacity 0.2s;
     z-index: 900;
@@ -148,9 +164,6 @@ body
     box-shadow: 0 2px 0 #ccc;
 }
 
-/* ... existing css ... */
-
-/* Dev Menu Styles */
 .dev-menu {
     position: fixed;
     top: 20px;
@@ -202,7 +215,6 @@ body
     background: #ff8c5a;
 }
 
-/* Main Menu Overlay */
 .main-menu {
     position: fixed;
     inset: 0;

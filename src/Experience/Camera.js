@@ -64,7 +64,6 @@ export default class Camera {
             const currentPlayerPosition = this.experience.world.player.mesh.position
 
             // 2. Initialize previous position on the very first frame to prevent camera jumps
-            // .length() === 0 checks if vector is (0,0,0)
             if (this.previousPlayerPosition.length() === 0 && currentPlayerPosition.length() !== 0) {
                 this.previousPlayerPosition.copy(currentPlayerPosition)
             }
@@ -74,12 +73,14 @@ export default class Camera {
             change.subVectors(currentPlayerPosition, this.previousPlayerPosition)
 
             // 4. Move the Camera by that exact same amount
-            // This drags the camera along with the player, keeping the "Zoom" distance constant
             this.instance.position.add(change)
 
             // 5. Move the Orbit Target to the player
             this.controls.target.copy(currentPlayerPosition)
-            this.controls.target.y += 1.5 // Look at chest/head area instead of feet
+            
+            // --- UPDATED: Focus Offset ---
+            // Changed from 3.0 to 2.2 for a better framing
+            this.controls.target.y += 2.2
 
             // 6. Save current position for the next frame
             this.previousPlayerPosition.copy(currentPlayerPosition)
