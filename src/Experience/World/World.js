@@ -576,7 +576,8 @@ export default class World {
         const combined = new THREE.Box3().makeEmpty();
         colliderObjects.forEach((obj) => combined.expandByObject(obj));
 
-        const cameraMargin = 0.2;
+        // Camera padding from walls/colliders (in world units)
+        const cameraMargin = 0.5;
         state.cameraBounds = {
           minX: combined.min.x + cameraMargin,
           maxX: combined.max.x - cameraMargin,
@@ -631,6 +632,7 @@ export default class World {
 
         // Only set camera bounds from walls if they weren't set by `_collider` meshes.
         if (!state.cameraBounds) {
+          // Camera padding from walls/colliders (in world units)
           const cameraMargin = 0.2;
           state.cameraBounds = {
             minX: combinedBox.min.x + cameraMargin,
@@ -742,7 +744,8 @@ export default class World {
         const controls = camera.controls;
         const cameraPos = camera.instance.position;
         const target = controls.target;
-        const margin = 0.1;
+        // Small extra margin to avoid sitting exactly on the bounds.
+        const margin = 0.05;
         const roofY = 5.2;
 
         // Clamp camera position inside box defined by room bounds and roof height
