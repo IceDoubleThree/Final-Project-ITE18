@@ -13,6 +13,7 @@ export default class World {
     this.scene = this.experience.scene;
     this.resources = this.experience.resources;
     this.debug = this.experience.debug;
+    this.playerDebugElement = null;
 
     // 1. Setup Physics
     this.physicsWorld = new CANNON.World();
@@ -35,6 +36,11 @@ export default class World {
       this.environment = new Environment();
       this.setupDevMenu();
 
+      // Debug overlay for player coordinates (only in #debug mode)
+      if (this.debug?.active) {
+        this.initPlayerDebugOverlay();
+      }
+
       // --- Default Start Location: Room ---
       if (this.debugState) {
         this.debugState.location = "Room";
@@ -43,6 +49,27 @@ export default class World {
         this.loadLocation("Room");
       }
     });
+  }
+
+  initPlayerDebugOverlay() {
+    if (this.playerDebugElement) return;
+
+    const el = document.createElement("div");
+    el.id = "player-debug-coords";
+    el.style.position = "fixed";
+    el.style.left = "10px";
+    el.style.bottom = "10px";
+    el.style.padding = "6px 10px";
+    el.style.background = "rgba(0, 0, 0, 0.7)";
+    el.style.color = "#0f0";
+    el.style.fontFamily = "monospace";
+    el.style.fontSize = "12px";
+    el.style.zIndex = "9999";
+    el.style.pointerEvents = "none";
+    el.textContent = "Player: x=0.00 y=0.00 z=0.00";
+
+    document.body.appendChild(el);
+    this.playerDebugElement = el;
   }
 
   setupDevMenu() {
@@ -75,9 +102,9 @@ export default class World {
     return {
       Room: {
         key: "Room",
-        origin: new THREE.Vector3(0, 0, 50),
+        origin: new THREE.Vector3(0, 0, 0),
         size: { width: 50, depth: 50 },
-        background: "#ffffff",
+        background: "#000000", // Dark sky for Room
         build: (state) => this.buildRoom(state),
       },
       StageDesign: {
@@ -89,14 +116,14 @@ export default class World {
       },
       BlankStage: {
         key: "BlankStage",
-        origin: new THREE.Vector3(100, 0, 0), // Far away
+        origin: new THREE.Vector3(0, 0, 0),
         size: { width: 50, depth: 50 },
         background: "#ffffff",
         build: (state) => this.buildBlankStage(state),
       },
       Store: {
         key: "Store",
-        origin: new THREE.Vector3(-50, 0, 0), // 50 blocks west
+        origin: new THREE.Vector3(0, 0, 0),
         size: { width: 50, depth: 50 },
         background: "skyblue",
         backgroundTextureKey: "storeSky",
@@ -260,7 +287,7 @@ export default class World {
 
     if (resource?.scene) {
       model = resource.scene;
-      model.scale.set(0.12, 0.12, 0.12);
+      model.scale.set(1.3, 1.3, 1.3);
       model.position.copy(state.origin);
       model.position.y = -0.2;
       state.group.add(model);
@@ -288,36 +315,10 @@ export default class World {
     this.physicsWorld.addBody(floorBody);
     state.physicsBodies.push(floorBody);
 
-    // --- Invisible Walls (Physics Only) ---
+    // --- Room boundary values (used for camera limits only) ---
     const wallDistance = 4;  
-    const wallThickness = 1;
-    const wallHeight = 10;
-    
-    // Box Position Offset 
     const wallOffsetX = 0.2; 
     const wallOffsetZ = -0.1; 
-    
-    const createWall = (x, z, w, d) => {
-        // Physics Body
-        const shape = new CANNON.Box(new CANNON.Vec3(w/2, wallHeight/2, d/2));
-        const body = new CANNON.Body({ mass: 0 }); 
-        body.addShape(shape);
-        
-        body.position.set(
-            state.origin.x + wallOffsetX + x, 
-            state.origin.y + wallHeight/2, 
-            state.origin.z + wallOffsetZ + z
-        );
-        
-        this.physicsWorld.addBody(body);
-        state.physicsBodies.push(body);
-    };
-
-    // Create the walls
-    createWall(0, -wallDistance, wallDistance * 2, wallThickness); // North
-    createWall(0, wallDistance, wallDistance * 2, wallThickness);  // South
-    createWall(wallDistance, 0, wallThickness, wallDistance * 2);  // East
-    createWall(-wallDistance, 0, wallThickness, wallDistance * 2); // West
 
 
     // --- Portal ---
@@ -551,6 +552,11 @@ export default class World {
 
     if (this.player) {
       this.player.update();
+    }
+
+    if (this.debug?.active && this.playerDebugElement && this.player?.mesh) {
+      const p = this.player.mesh.position;
+      this.playerDebugElement.textContent = `Player: x=${p.x.toFixed(2)} y=${p.y.toFixed(2)} z=${p.z.toFixed(2)}`;
     }
   }
 }
