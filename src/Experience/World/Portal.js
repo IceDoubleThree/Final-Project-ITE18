@@ -2,50 +2,58 @@ import * as THREE from 'three'
 import Experience from '../Experience.js'
 
 export default class Portal {
-    constructor(world, position, destinationKey, name = "Next Stage", color = 0xffff00) {
+    static activeMenuPortal = null
+
+    /**
+     * A portal is now a box trigger volume + UI.
+     *
+     * @param {World} world
+     * @param {THREE.Vector3} position - center position (used if no boundsBox provided)
+     * @param {string|null} destinationKey - optional single-destination shortcut
+     * @param {string} name - display name
+     * @param {number} color - unused for invisible triggers; kept for compatibility
+     * @param {object} options
+     * @param {THREE.Vector3} options.size - box size (default: 2x2x2)
+     * @param {THREE.Box3} options.boundsBox - explicit world-space box
+     * @param {number} options.interactionRadius - distance outside the box to show prompt (default: 1)
+     * @param {Array<{ label: string, destinationKey?: string, onSelect?: Function }>} options.options
+     */
+    constructor(world, position, destinationKey, name = "Next Stage", color = 0xffff00, options = {}) {
         this.experience = new Experience()
-        this.scene = this.experience.scene
         this.world = world
         this.input = this.experience.input
 
-        this.position = position
-        this.destinationKey = destinationKey
+        this.position = position || new THREE.Vector3()
+        this.destinationKey = destinationKey || null
         this.name = name
-        this.color = color 
+        this.color = color
 
-        this.interactionDistance = 2.0
+        this.size = options.size || new THREE.Vector3(2, 2, 2)
+        this.boundsBox = options.boundsBox || null
+        this.interactionRadius = typeof options.interactionRadius === 'number' ? options.interactionRadius : 1
+
+        this.menuOptions = Array.isArray(options.options) ? options.options : null
+        if (!this.menuOptions) {
+            // Default: single option to travel
+            const label = this.destinationKey ? `Go to ${this.name}` : `Interact with ${this.name}`
+            this.menuOptions = [{ label, destinationKey: this.destinationKey }]
+        }
+
         this.isPlayerClose = false
-        this.isActive = true 
+        this.isActive = true
+        this.isMenuOpen = false
 
-        // Debug Log
-        console.log(`🚧 Creating Portal "${name}" at`, this.position)
+        this._worldBox = new THREE.Box3()
+        this._tmp = new THREE.Vector3()
 
-        this.setMesh()
         this.createPromptElement()
+        this.createOptionsElement()
 
         this.onInteract = this.handleInteract.bind(this)
         this.input.on('interact', this.onInteract)
-    }
 
-    setMesh() {
-        // CHANGED: Use BoxGeometry for thickness (easier to see)
-        const geometry = new THREE.BoxGeometry(1.5, 2.5, 0.2)
-        
-        // CHANGED: Solid material (no transparency) for debug visibility
-        const material = new THREE.MeshStandardMaterial({ 
-            color: this.color,
-            emissive: this.color,
-            emissiveIntensity: 0.5,
-            roughness: 0.1,
-            metalness: 0.1
-        })
-
-        this.mesh = new THREE.Mesh(geometry, material)
-        this.mesh.position.copy(this.position)
-        this.mesh.position.y += 1.25 // Center vertical
-        
-        // Ensure it's added to the scene
-        this.scene.add(this.mesh)
+        this.onKeyDown = this.handleKeyDown.bind(this)
+        document.addEventListener('keydown', this.onKeyDown)
     }
 
     createPromptElement() {
@@ -53,42 +61,169 @@ export default class Portal {
         this.prompt.classList.add('interact-prompt')
         this.prompt.innerHTML = `
             <span class="key-icon">F</span>
-            <span>Enter ${this.name}</span>
+            <span>Interact: ${this.name}</span>
         `
         document.body.appendChild(this.prompt)
     }
 
+    createOptionsElement() {
+        this.optionsEl = document.createElement('div')
+        this.optionsEl.classList.add('interact-options')
+        this.optionsEl.classList.add('hidden')
+        document.body.appendChild(this.optionsEl)
+        this.renderOptions()
+    }
+
+    renderOptions() {
+        if (!this.optionsEl) return
+
+        const buttons = this.menuOptions
+            .map((opt, idx) => {
+                const key = idx + 1
+                const safeLabel = String(opt.label ?? `Option ${key}`)
+                return `<button type="button" data-index="${idx}"><span class="opt-key">${key}</span>${safeLabel}</button>`
+            })
+            .join('')
+
+        this.optionsEl.innerHTML = `
+            <div class="interact-options-title">${this.name}</div>
+            <div class="interact-options-buttons">${buttons}</div>
+        `
+
+        // Click handling
+        this.optionsEl.querySelectorAll('button[data-index]').forEach((btn) => {
+            btn.addEventListener('click', () => {
+                const idx = Number(btn.getAttribute('data-index'))
+                this.selectOption(idx)
+            })
+        })
+    }
+
     handleInteract() {
-        if (this.isPlayerClose && this.isActive) {
-            console.log(`🚪 Teleporting to ${this.destinationKey}`)
-            this.isActive = false
-            this.world.loadLocation(this.destinationKey)
+        if (!this.isPlayerClose || !this.isActive) return
+
+        if (!this.isMenuOpen) {
+            this.openMenu()
         }
+    }
+
+    handleKeyDown(event) {
+        if (!this.isMenuOpen) return
+
+        if (event.code === 'Escape') {
+            this.closeMenu()
+            return
+        }
+
+        // Number keys 1..9 select options
+        if (event.code.startsWith('Digit')) {
+            const n = Number(event.code.replace('Digit', ''))
+            if (!Number.isFinite(n)) return
+            const idx = n - 1
+            if (idx >= 0 && idx < this.menuOptions.length) {
+                this.selectOption(idx)
+            }
+        }
+    }
+
+    openMenu() {
+        if (!this.optionsEl) return
+
+        // Only one portal menu at a time
+        if (Portal.activeMenuPortal && Portal.activeMenuPortal !== this) {
+            Portal.activeMenuPortal.closeMenu()
+        }
+        Portal.activeMenuPortal = this
+
+        this.isMenuOpen = true
+        this.optionsEl.classList.remove('hidden')
+        this.optionsEl.classList.add('visible')
+        // Hide prompt while menu is open
+        if (this.prompt) this.prompt.classList.remove('visible')
+    }
+
+    closeMenu() {
+        if (!this.optionsEl) return
+        this.isMenuOpen = false
+        this.optionsEl.classList.remove('visible')
+        this.optionsEl.classList.add('hidden')
+
+        if (Portal.activeMenuPortal === this) {
+            Portal.activeMenuPortal = null
+        }
+    }
+
+    selectOption(index) {
+        const opt = this.menuOptions[index]
+        if (!opt) return
+
+        // Close UI first to avoid overlapping with location load
+        this.closeMenu()
+
+        if (typeof opt.onSelect === 'function') {
+            opt.onSelect()
+            return
+        }
+
+        const destination = opt.destinationKey || this.destinationKey
+        if (destination) {
+            console.log(`🚪 Teleporting to ${destination}`)
+            this.isActive = false
+            this.world.loadLocation(destination)
+        }
+    }
+
+    updateWorldBox() {
+        if (this.boundsBox) {
+            this._worldBox.copy(this.boundsBox)
+            return
+        }
+
+        // Box centered at `position`
+        const half = this._tmp.copy(this.size).multiplyScalar(0.5)
+        this._worldBox.min.set(
+            this.position.x - half.x,
+            this.position.y - half.y,
+            this.position.z - half.z
+        )
+        this._worldBox.max.set(
+            this.position.x + half.x,
+            this.position.y + half.y,
+            this.position.z + half.z
+        )
+    }
+
+    distanceToBoxXZ(point) {
+        // Distance from point to AABB in XZ only (0 if inside on both axes)
+        const min = this._worldBox.min
+        const max = this._worldBox.max
+        const px = point.x
+        const pz = point.z
+
+        const dx = px < min.x ? (min.x - px) : (px > max.x ? (px - max.x) : 0)
+        const dz = pz < min.z ? (min.z - pz) : (pz > max.z ? (pz - max.z) : 0)
+        return Math.sqrt(dx * dx + dz * dz)
     }
 
     update() {
         if (!this.world.player || !this.world.player.mesh) return
 
         const playerPos = this.world.player.mesh.position
-        const portalPos = this.mesh.position
 
-        // Simple distance check
-        const distance = Math.sqrt(
-            Math.pow(playerPos.x - portalPos.x, 2) +
-            Math.pow(playerPos.z - portalPos.z, 2)
-        )
+        this.updateWorldBox()
+        const dist = this.distanceToBoxXZ(playerPos)
 
-        if (distance < this.interactionDistance) {
+        if (dist <= this.interactionRadius) {
             this.isPlayerClose = true
-            this.prompt.classList.add('visible')
-            
-            // Pulse effect
-            const pulse = 0.5 + Math.sin(Date.now() * 0.005) * 0.2
-            this.mesh.material.emissiveIntensity = pulse
+            if (!this.isMenuOpen) {
+                this.prompt.classList.add('visible')
+            }
         } else {
             this.isPlayerClose = false
             this.prompt.classList.remove('visible')
-            this.mesh.material.emissiveIntensity = 0.5
+            if (this.isMenuOpen) {
+                this.closeMenu()
+            }
         }
     }
 
@@ -97,9 +232,11 @@ export default class Portal {
             this.prompt.remove()
         }
 
-        this.scene.remove(this.mesh)
-        this.mesh.geometry.dispose()
-        this.mesh.material.dispose()
+        if (this.optionsEl) {
+            this.optionsEl.remove()
+        }
+
+        document.removeEventListener('keydown', this.onKeyDown)
 
         // Clean up event listener safely
         if (this.input && this.input.callbacks && this.input.callbacks.base && this.input.callbacks.base.interact) {

@@ -53,6 +53,18 @@ export default class World {
     });
   }
 
+  findObjectByName(root, exactName) {
+    if (!root) return null;
+    const target = (exactName || "").toLowerCase();
+    let found = null;
+    root.traverse((obj) => {
+      if (found) return;
+      const name = (obj.name || "").toLowerCase();
+      if (name === target) found = obj;
+    });
+    return found;
+  }
+
   isColliderObject(object3d) {
     const name = (object3d?.name || "").toLowerCase();
     return name.endsWith("_collider");
@@ -571,6 +583,33 @@ export default class World {
         material: this.materials.materials.floor,
       });
 
+      // --- Door_Default_0 warp area (Room -> Store) ---
+      const doorObj = this.findObjectByName(model, "Door_Default_0");
+      if (doorObj) {
+        const doorBox = new THREE.Box3().setFromObject(doorObj);
+        // Expand the trigger box a bit so it's easier to hit
+        doorBox.expandByVector(new THREE.Vector3(0.6, 0.6, 0.6));
+
+        const doorPortal = new Portal(
+          this,
+          doorBox.getCenter(new THREE.Vector3()),
+          null,
+          "Door",
+          0x00ffcc,
+          {
+            boundsBox: doorBox,
+            interactionRadius: 1,
+            options: [
+              { label: "Go to Store", destinationKey: "Store" },
+            ],
+          }
+        );
+
+        state.portals.push(doorPortal);
+      } else if (this.debug?.active) {
+        console.warn("⚠️ Door_Default_0 not found in room model; Store door warp not created.");
+      }
+
       // If colliders exist, use their bounds for camera limits.
       if (colliderObjects.length > 0) {
         const combined = new THREE.Box3().makeEmpty();
@@ -722,14 +761,11 @@ export default class World {
       state.origin.y,
       state.origin.z - 2
     );
-    const portal = new Portal(
-      this,
-      portalPos,
-      "StageDesign",
-      "Stage Area"
-    );
-    portal.mesh.rotation.y = Math.PI * 0.5;
-    state.group.add(portal.mesh);
+    const portal = new Portal(this, portalPos, null, "Portal", 0xffff00, {
+      size: new THREE.Vector3(2, 2.5, 2),
+      interactionRadius: 1,
+      options: [{ label: "Go to Stage Area", destinationKey: "StageDesign" }],
+    });
     state.portals.push(portal);
 
     return {
@@ -824,14 +860,11 @@ export default class World {
       state.origin.y,
       state.origin.z - 5
     );
-    const portal = new Portal(
-      this,
-      portalPos,
-      "BlankStage",
-      "Empty Stage",
-      0xffff00
-    );
-    state.group.add(portal.mesh);
+    const portal = new Portal(this, portalPos, null, "Portal", 0xffff00, {
+      size: new THREE.Vector3(2, 2.5, 2),
+      interactionRadius: 1,
+      options: [{ label: "Go to Empty Stage", destinationKey: "BlankStage" }],
+    });
     state.portals.push(portal);
 
     const portalLight = new THREE.PointLight(0xffff00, 1, 10);
@@ -882,14 +915,11 @@ export default class World {
       state.origin.y,
       state.origin.z + 5
     );
-    const backPortal = new Portal(
-      this,
-      backPortalPos,
-      "StageDesign",
-      "Main Room",
-      0xff0000
-    );
-    state.group.add(backPortal.mesh);
+    const backPortal = new Portal(this, backPortalPos, null, "Portal", 0xff0000, {
+      size: new THREE.Vector3(2, 2.5, 2),
+      interactionRadius: 1,
+      options: [{ label: "Go to Stage Area", destinationKey: "StageDesign" }],
+    });
     state.portals.push(backPortal);
 
     state.disposables.push(floorGeometry, floorMaterial);
