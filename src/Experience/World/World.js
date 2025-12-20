@@ -53,6 +53,98 @@ export default class World {
     });
   }
 
+  isColliderObject(object3d) {
+    const name = (object3d?.name || "").toLowerCase();
+    return name.endsWith("_collider");
+  }
+
+  /**
+   * Finds objects named with `_collider` suffix, hides them, and turns them into
+   * static Cannon bodies (fast primitive Box colliders).
+   *
+   * Returns an array of collider objects found.
+   */
+  createPhysicsBodiesFromColliders(model, state, options = {}) {
+    if (!model || !state) return [];
+
+    const material = options.material || this.materials.materials.floor;
+    const colliders = [];
+
+    model.updateWorldMatrix(true, true);
+
+    model.traverse((obj) => {
+      if (!this.isColliderObject(obj)) return;
+      colliders.push(obj);
+    });
+
+    if (colliders.length === 0) return colliders;
+
+    const worldScale = new THREE.Vector3();
+    const worldQuat = new THREE.Quaternion();
+    const tmpCenter = new THREE.Vector3();
+    const tmpSize = new THREE.Vector3();
+
+    for (const obj of colliders) {
+      // Always invisible in the render, still active for physics
+      obj.visible = false;
+
+      // Prefer oriented box based on local geometry bounds (Mesh)
+      if (obj instanceof THREE.Mesh && obj.geometry) {
+        const geometry = obj.geometry;
+        if (!geometry.boundingBox) geometry.computeBoundingBox();
+        const bbox = geometry.boundingBox;
+
+        if (bbox) {
+          bbox.getCenter(tmpCenter);
+          bbox.getSize(tmpSize);
+
+          obj.getWorldScale(worldScale);
+          obj.getWorldQuaternion(worldQuat);
+
+          // Convert local center to world
+          const centerWorld = tmpCenter.clone();
+          obj.localToWorld(centerWorld);
+
+          const halfExtents = new CANNON.Vec3(
+            Math.max(0.001, Math.abs(tmpSize.x * worldScale.x) * 0.5),
+            Math.max(0.001, Math.abs(tmpSize.y * worldScale.y) * 0.5),
+            Math.max(0.001, Math.abs(tmpSize.z * worldScale.z) * 0.5)
+          );
+
+          const body = new CANNON.Body({ mass: 0, material });
+          body.addShape(new CANNON.Box(halfExtents));
+          body.position.set(centerWorld.x, centerWorld.y, centerWorld.z);
+          body.quaternion.set(worldQuat.x, worldQuat.y, worldQuat.z, worldQuat.w);
+
+          this.physicsWorld.addBody(body);
+          state.physicsBodies.push(body);
+          continue;
+        }
+      }
+
+      // Fallback: axis-aligned world AABB box (works for Groups too)
+      const worldBox = new THREE.Box3().setFromObject(obj);
+      worldBox.getCenter(tmpCenter);
+      worldBox.getSize(tmpSize);
+      if (tmpSize.x <= 0 || tmpSize.y <= 0 || tmpSize.z <= 0) continue;
+
+      const halfExtents = new CANNON.Vec3(
+        Math.max(0.001, tmpSize.x * 0.5),
+        Math.max(0.001, tmpSize.y * 0.5),
+        Math.max(0.001, tmpSize.z * 0.5)
+      );
+
+      const body = new CANNON.Body({ mass: 0, material });
+      body.addShape(new CANNON.Box(halfExtents));
+      body.position.set(tmpCenter.x, tmpCenter.y, tmpCenter.z);
+
+      this.physicsWorld.addBody(body);
+      state.physicsBodies.push(body);
+    }
+
+    return colliders;
+  }
+
   initPhysicsDebug() {
     if (this.physicsDebug) return;
 
@@ -474,9 +566,28 @@ export default class World {
         }
       });
 
-      // Physics walls as CANNON boxes derived from the combined bounding box
-      // of room.glb objects named "wall" and "wall.001".
-      // Note: these may be Groups (not Meshes), so we match any Object3D by name.
+      // --- `_collider` meshes: invisible + physics bodies ---
+      const colliderObjects = this.createPhysicsBodiesFromColliders(model, state, {
+        material: this.materials.materials.floor,
+      });
+
+      // If colliders exist, use their bounds for camera limits.
+      if (colliderObjects.length > 0) {
+        const combined = new THREE.Box3().makeEmpty();
+        colliderObjects.forEach((obj) => combined.expandByObject(obj));
+
+        const cameraMargin = 0.2;
+        state.cameraBounds = {
+          minX: combined.min.x + cameraMargin,
+          maxX: combined.max.x - cameraMargin,
+          minZ: combined.min.z + cameraMargin,
+          maxZ: combined.max.z - cameraMargin,
+        };
+      }
+
+      // --- Wall-name based colliders (separate implementation) ---
+      // This keeps compatibility with older Room exports that had wall nodes,
+      // and can coexist with `_collider` meshes.
       const targetWallNames = new Set(["wall", "wall2"]);
       const wallObjects = [];
 
@@ -491,7 +602,6 @@ export default class World {
         const center = new THREE.Vector3();
         const size = new THREE.Vector3();
 
-        // Expand by object so Groups work (includes all children geometry)
         wallObjects.forEach((obj) => {
           combinedBox.expandByObject(obj);
         });
@@ -519,14 +629,16 @@ export default class World {
           });
         }
 
-        // Camera movement limits derived from actual wall bounds (XZ only)
-        const cameraMargin = 0.2;
-        state.cameraBounds = {
-          minX: combinedBox.min.x + cameraMargin,
-          maxX: combinedBox.max.x - cameraMargin,
-          minZ: combinedBox.min.z + cameraMargin,
-          maxZ: combinedBox.max.z - cameraMargin,
-        };
+        // Only set camera bounds from walls if they weren't set by `_collider` meshes.
+        if (!state.cameraBounds) {
+          const cameraMargin = 0.2;
+          state.cameraBounds = {
+            minX: combinedBox.min.x + cameraMargin,
+            maxX: combinedBox.max.x - cameraMargin,
+            minZ: combinedBox.min.z + cameraMargin,
+            maxZ: combinedBox.max.z - cameraMargin,
+          };
+        }
 
         // Thickness of the collider walls (in world units)
         const thickness = 0.2;
@@ -547,26 +659,42 @@ export default class World {
         // Build 4 thin axis-aligned walls around the combined bounds.
         // Left / Right walls (normal +/-X)
         addWallBox(
-          new CANNON.Vec3(halfT, Math.max(size.y * 0.5, 0.1), Math.max(size.z * 0.5, 0.1)),
+          new CANNON.Vec3(
+            halfT,
+            Math.max(size.y * 0.5, 0.1),
+            Math.max(size.z * 0.5, 0.1)
+          ),
           new THREE.Vector3(combinedBox.min.x - halfT, center.y, center.z)
         );
         addWallBox(
-          new CANNON.Vec3(halfT, Math.max(size.y * 0.5, 0.1), Math.max(size.z * 0.5, 0.1)),
+          new CANNON.Vec3(
+            halfT,
+            Math.max(size.y * 0.5, 0.1),
+            Math.max(size.z * 0.5, 0.1)
+          ),
           new THREE.Vector3(combinedBox.max.x + halfT, center.y, center.z)
         );
 
         // Front / Back walls (normal +/-Z)
         addWallBox(
-          new CANNON.Vec3(Math.max(size.x * 0.5, 0.1), Math.max(size.y * 0.5, 0.1), halfT),
+          new CANNON.Vec3(
+            Math.max(size.x * 0.5, 0.1),
+            Math.max(size.y * 0.5, 0.1),
+            halfT
+          ),
           new THREE.Vector3(center.x, center.y, combinedBox.min.z - halfT)
         );
         addWallBox(
-          new CANNON.Vec3(Math.max(size.x * 0.5, 0.1), Math.max(size.y * 0.5, 0.1), halfT),
+          new CANNON.Vec3(
+            Math.max(size.x * 0.5, 0.1),
+            Math.max(size.y * 0.5, 0.1),
+            halfT
+          ),
           new THREE.Vector3(center.x, center.y, combinedBox.max.z + halfT)
         );
       } else if (this.debug?.active) {
         console.warn(
-          "⚠️ Could not find 'wall' or 'wall.001' in room.glb; no wall boxes were created."
+          "⚠️ Could not find 'wall' or 'wall2' in room.glb; no wall boxes were created."
         );
       }
     }
