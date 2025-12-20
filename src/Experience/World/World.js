@@ -14,6 +14,7 @@ export default class World {
     this.resources = this.experience.resources;
     this.debug = this.experience.debug;
     this.playerDebugElement = null;
+    this.physicsDebug = null;
 
     // 1. Setup Physics
     this.physicsWorld = new CANNON.World();
@@ -39,6 +40,7 @@ export default class World {
       // Debug overlay for player coordinates (only in #debug mode)
       if (this.debug?.active) {
         this.initPlayerDebugOverlay();
+        this.initPhysicsDebug();
       }
 
       // --- Default Start Location: Room ---
@@ -49,6 +51,141 @@ export default class World {
         this.loadLocation("Room");
       }
     });
+  }
+
+  initPhysicsDebug() {
+    if (this.physicsDebug) return;
+
+    const group = new THREE.Group();
+    group.name = "cannon-debug";
+    this.scene.add(group);
+
+    const material = new THREE.MeshBasicMaterial({
+      color: 0x00ffff,
+      wireframe: true,
+      transparent: true,
+      opacity: 0.75,
+    });
+
+    const planeGeometry = new THREE.PlaneGeometry(20, 20);
+
+    this.physicsDebug = {
+      enabled: true,
+      group,
+      material,
+      planeGeometry,
+      meshes: new Map(), // key: `${body.id}:${shapeIndex}`
+      geometryCache: new Map(),
+    };
+
+    // Optional GUI toggle
+    if (this.debug?.active && this.debug?.ui && this.debugFolder) {
+      const state = { physicsDebug: true };
+      this.debugFolder
+        .add(state, "physicsDebug")
+        .name("physics debug")
+        .onChange((v) => {
+          this.physicsDebug.enabled = !!v;
+          this.physicsDebug.group.visible = !!v;
+        });
+    }
+  }
+
+  getPhysicsDebugGeometry(shape) {
+    const cache = this.physicsDebug.geometryCache;
+
+    if (shape instanceof CANNON.Sphere) {
+      const key = `sphere:${shape.radius}`;
+      if (!cache.has(key)) {
+        cache.set(key, new THREE.SphereGeometry(shape.radius, 16, 12));
+      }
+      return cache.get(key);
+    }
+
+    if (shape instanceof CANNON.Box) {
+      const he = shape.halfExtents;
+      const key = `box:${he.x},${he.y},${he.z}`;
+      if (!cache.has(key)) {
+        cache.set(key, new THREE.BoxGeometry(he.x * 2, he.y * 2, he.z * 2));
+      }
+      return cache.get(key);
+    }
+
+    if (shape instanceof CANNON.Cylinder) {
+      const key = `cyl:${shape.radiusTop},${shape.radiusBottom},${shape.height},${shape.numSegments}`;
+      if (!cache.has(key)) {
+        const geom = new THREE.CylinderGeometry(
+          shape.radiusTop,
+          shape.radiusBottom,
+          shape.height,
+          shape.numSegments
+        );
+        // Cannon cylinders are oriented along X; Three cylinders are along Y.
+        geom.rotateZ(Math.PI * 0.5);
+        cache.set(key, geom);
+      }
+      return cache.get(key);
+    }
+
+    if (shape instanceof CANNON.Plane) {
+      return this.physicsDebug.planeGeometry;
+    }
+
+    return null;
+  }
+
+  updatePhysicsDebug() {
+    if (!this.physicsDebug?.enabled) return;
+
+    const { group, material, meshes } = this.physicsDebug;
+    const seenKeys = new Set();
+
+    for (const body of this.physicsWorld.bodies) {
+      for (let i = 0; i < body.shapes.length; i++) {
+        const shape = body.shapes[i];
+        const key = `${body.id}:${i}`;
+        seenKeys.add(key);
+
+        let mesh = meshes.get(key);
+        if (!mesh) {
+          const geom = this.getPhysicsDebugGeometry(shape);
+          if (!geom) continue;
+          mesh = new THREE.Mesh(geom, material);
+          mesh.frustumCulled = false;
+          group.add(mesh);
+          meshes.set(key, mesh);
+        }
+
+        const offset = body.shapeOffsets[i];
+        const orient = body.shapeOrientations[i];
+
+        // World position = body.position + body.quaternion * offset
+        const ox = offset?.x ?? 0;
+        const oy = offset?.y ?? 0;
+        const oz = offset?.z ?? 0;
+        const rotatedOffset = new CANNON.Vec3(ox, oy, oz);
+        body.quaternion.vmult(rotatedOffset, rotatedOffset);
+
+        mesh.position.set(
+          body.position.x + rotatedOffset.x,
+          body.position.y + rotatedOffset.y,
+          body.position.z + rotatedOffset.z
+        );
+
+        // World quaternion = body.quaternion * shapeOrientation
+        const qBody = body.quaternion;
+        const qShape = orient || new CANNON.Quaternion(0, 0, 0, 1);
+        const qWorld = qBody.mult(qShape);
+        mesh.quaternion.set(qWorld.x, qWorld.y, qWorld.z, qWorld.w);
+      }
+    }
+
+    // Remove stale debug meshes (bodies/shapes removed)
+    for (const [key, mesh] of meshes.entries()) {
+      if (seenKeys.has(key)) continue;
+      group.remove(mesh);
+      meshes.delete(key);
+    }
   }
 
   initPlayerDebugOverlay() {
@@ -94,6 +231,18 @@ export default class World {
         )
         .name("reload");
 
+      // If physics debug already initialized, expose toggle.
+      if (this.physicsDebug) {
+        const state = { physicsDebug: this.physicsDebug.enabled };
+        this.debugFolder
+          .add(state, "physicsDebug")
+          .name("physics debug")
+          .onChange((v) => {
+            this.physicsDebug.enabled = !!v;
+            this.physicsDebug.group.visible = !!v;
+          });
+      }
+
       return;
     }
   }
@@ -103,6 +252,7 @@ export default class World {
       Room: {
         key: "Room",
         origin: new THREE.Vector3(0, 0, 0),
+        spawnOffset: new THREE.Vector3(6.5, 0, 2),
         size: { width: 50, depth: 50 },
         background: "#000000", // Dark sky for Room
         build: (state) => this.buildRoom(state),
@@ -144,8 +294,8 @@ export default class World {
     // 1. Cleanup Old Location
     this.destroyCurrentLocation();
 
-    // 2. Reset Player Position (Move to Origin)
-    this.resetPlayer(config.origin);
+    // 2. Reset Player Position (Move to Origin + optional spawn offset)
+    this.resetPlayer(config.origin, config.spawnOffset);
 
     // 3. Instantiate New Location
     this.currentLocation = this.buildLocation(config);
@@ -162,14 +312,18 @@ export default class World {
     if (this.debugState) this.debugState.location = locationKey;
   }
 
-  resetPlayer(origin) {
+  resetPlayer(origin, spawnOffset) {
     if (!this.player || !this.player.body) return;
 
     console.log("📍 Resetting Player to Location Origin");
     this.player.body.velocity.set(0, 0, 0);
     this.player.body.angularVelocity.set(0, 0, 0);
 
-    const target = new CANNON.Vec3(origin.x, origin.y + 2, origin.z);
+    const ox = spawnOffset?.x ?? 0;
+    const oy = spawnOffset?.y ?? 0;
+    const oz = spawnOffset?.z ?? 0;
+
+    const target = new CANNON.Vec3(origin.x + ox, origin.y + 2 + oy, origin.z + oz);
     this.player.body.position.copy(target);
     this.player.mesh.position.copy(target);
   }
@@ -210,6 +364,8 @@ export default class World {
       npcs: [],
       portals: [],
       updates: [],
+      cameraBounds: null,
+      debugBoundingBoxes: [],
     };
 
     // Debug perimeter helper
@@ -223,6 +379,25 @@ export default class World {
     const buildResult = config.build(state);
     if (buildResult?.update) state.updates.push(buildResult.update);
     if (buildResult?.cleanup) state.customCleanup = buildResult.cleanup;
+
+    // Debug bounding boxes for all meshes in this location
+    if (this.debug?.active) {
+      state.group.traverse((obj) => {
+        if (obj instanceof THREE.Mesh) {
+          const helper = new THREE.BoxHelper(obj, 0xff00ff);
+          state.group.add(helper);
+          state.debugBoundingBoxes.push(helper);
+          if (helper.geometry) state.disposables.push(helper.geometry);
+          if (helper.material) state.disposables.push(helper.material);
+        }
+      });
+
+      if (state.debugBoundingBoxes.length > 0) {
+        state.updates.push(() => {
+          state.debugBoundingBoxes.forEach((h) => h.update());
+        });
+      }
+    }
 
     return state;
   }
@@ -298,6 +473,102 @@ export default class World {
           child.receiveShadow = true;
         }
       });
+
+      // Physics walls as CANNON boxes derived from the combined bounding box
+      // of room.glb objects named "wall" and "wall.001".
+      // Note: these may be Groups (not Meshes), so we match any Object3D by name.
+      const targetWallNames = new Set(["wall", "wall2"]);
+      const wallObjects = [];
+
+      model.updateWorldMatrix(true, true);
+      model.traverse((obj) => {
+        const name = (obj.name || "").toLowerCase();
+        if (targetWallNames.has(name)) wallObjects.push(obj);
+      });
+
+      if (wallObjects.length > 0) {
+        const combinedBox = new THREE.Box3().makeEmpty();
+        const center = new THREE.Vector3();
+        const size = new THREE.Vector3();
+
+        // Expand by object so Groups work (includes all children geometry)
+        wallObjects.forEach((obj) => {
+          combinedBox.expandByObject(obj);
+        });
+
+        // Fallback if bounds are degenerate (common when the named node is just a pivot)
+        combinedBox.getSize(size);
+        if (size.x < 0.01 || size.z < 0.01) {
+          const fallback = new THREE.Box3().setFromObject(model);
+          fallback.getSize(size);
+          if (size.x >= 0.01 && size.z >= 0.01) {
+            combinedBox.copy(fallback);
+          }
+        }
+
+        combinedBox.getCenter(center);
+        combinedBox.getSize(size);
+
+        if (this.debug?.active) {
+          console.log("🧱 Room wall bounds:", {
+            min: combinedBox.min.clone(),
+            max: combinedBox.max.clone(),
+            size: size.clone(),
+            center: center.clone(),
+            matched: wallObjects.map((o) => o.name),
+          });
+        }
+
+        // Camera movement limits derived from actual wall bounds (XZ only)
+        const cameraMargin = 0.2;
+        state.cameraBounds = {
+          minX: combinedBox.min.x + cameraMargin,
+          maxX: combinedBox.max.x - cameraMargin,
+          minZ: combinedBox.min.z + cameraMargin,
+          maxZ: combinedBox.max.z - cameraMargin,
+        };
+
+        // Thickness of the collider walls (in world units)
+        const thickness = 0.2;
+        const halfT = thickness * 0.5;
+
+        const addWallBox = (halfExtents, position) => {
+          const shape = new CANNON.Box(halfExtents);
+          const body = new CANNON.Body({
+            mass: 0,
+            material: this.materials.materials.floor,
+          });
+          body.addShape(shape);
+          body.position.set(position.x, position.y, position.z);
+          this.physicsWorld.addBody(body);
+          state.physicsBodies.push(body);
+        };
+
+        // Build 4 thin axis-aligned walls around the combined bounds.
+        // Left / Right walls (normal +/-X)
+        addWallBox(
+          new CANNON.Vec3(halfT, Math.max(size.y * 0.5, 0.1), Math.max(size.z * 0.5, 0.1)),
+          new THREE.Vector3(combinedBox.min.x - halfT, center.y, center.z)
+        );
+        addWallBox(
+          new CANNON.Vec3(halfT, Math.max(size.y * 0.5, 0.1), Math.max(size.z * 0.5, 0.1)),
+          new THREE.Vector3(combinedBox.max.x + halfT, center.y, center.z)
+        );
+
+        // Front / Back walls (normal +/-Z)
+        addWallBox(
+          new CANNON.Vec3(Math.max(size.x * 0.5, 0.1), Math.max(size.y * 0.5, 0.1), halfT),
+          new THREE.Vector3(center.x, center.y, combinedBox.min.z - halfT)
+        );
+        addWallBox(
+          new CANNON.Vec3(Math.max(size.x * 0.5, 0.1), Math.max(size.y * 0.5, 0.1), halfT),
+          new THREE.Vector3(center.x, center.y, combinedBox.max.z + halfT)
+        );
+      } else if (this.debug?.active) {
+        console.warn(
+          "⚠️ Could not find 'wall' or 'wall.001' in room.glb; no wall boxes were created."
+        );
+      }
     }
 
     // Floor Physics
@@ -315,76 +586,67 @@ export default class World {
     this.physicsWorld.addBody(floorBody);
     state.physicsBodies.push(floorBody);
 
-    // --- Room boundary values (used for camera limits only) ---
-    const wallDistance = 4;  
-    const wallOffsetX = 0.2; 
-    const wallOffsetZ = -0.1; 
-
-
     // --- Portal ---
     const portalPos = new THREE.Vector3(
       state.origin.x - 4.4, 
       state.origin.y,
       state.origin.z - 2
     );
-
     const portal = new Portal(
       this,
       portalPos,
       "StageDesign",
-      "Stage Area",
+      "Stage Area"
     );
     portal.mesh.rotation.y = Math.PI * 0.5;
     state.group.add(portal.mesh);
     state.portals.push(portal);
 
-    // --- CAMERA BOUNDARY CALCULATIONS ---
-    const minX = state.origin.x + wallOffsetX - wallDistance;
-    const maxX = state.origin.x + wallOffsetX + wallDistance;
-    const minZ = state.origin.z + wallOffsetZ - wallDistance;
-    const maxZ = state.origin.z + wallOffsetZ + wallDistance;
-    const buffer = 0.2; 
-
     return {
       update: () => {
         state.portals.forEach((p) => p.update());
 
-        // --- DYNAMIC CAMERA COLLISION SYSTEM ---
-        const controls = this.experience.camera.controls;
-        const playerPos = this.player.mesh.position;
-        const cameraPos = this.experience.camera.instance.position;
+        // --- CAMERA CLAMP INSIDE ROOM BOUNDS (Room) ---
+        const bounds = state.cameraBounds;
+        const camera = this.experience.camera;
+        if (!bounds || !camera?.instance || !camera.controls) return;
 
-        // 1. Calculate direction vector from Player to Camera
-        const dir = new THREE.Vector3().subVectors(cameraPos, playerPos).normalize();
-        
-        // 2. Find distance to the closest wall in that direction
-        // --- CHANGED: Target distance is now 15 ---
-        let maxAllowedDistance = 15; 
+        const controls = camera.controls;
+        const cameraPos = camera.instance.position;
+        const target = controls.target;
+        const margin = 0.1;
+        const roofY = 5.2;
 
-        // Check X Intersections
-        if (dir.x > 0) {
-            const distToWall = (maxX - buffer - playerPos.x) / dir.x;
-            if (distToWall > 0) maxAllowedDistance = Math.min(maxAllowedDistance, distToWall);
-        } else if (dir.x < 0) {
-            const distToWall = (minX + buffer - playerPos.x) / dir.x;
-            if (distToWall > 0) maxAllowedDistance = Math.min(maxAllowedDistance, distToWall);
+        // Clamp camera position inside box defined by room bounds and roof height
+        cameraPos.x = Math.min(
+          bounds.maxX - margin,
+          Math.max(bounds.minX + margin, cameraPos.x)
+        );
+        cameraPos.z = Math.min(
+          bounds.maxZ - margin,
+          Math.max(bounds.minZ + margin, cameraPos.z)
+        );
+        cameraPos.y = Math.min(roofY, cameraPos.y);
+
+        // Clamp orbit target as well so zoom/orbit stays inside
+        if (target) {
+          target.x = Math.min(
+            bounds.maxX - margin,
+            Math.max(bounds.minX + margin, target.x)
+          );
+          target.z = Math.min(
+            bounds.maxZ - margin,
+            Math.max(bounds.minZ + margin, target.z)
+          );
+          target.y = Math.min(roofY, target.y);
         }
 
-        // Check Z Intersections
-        if (dir.z > 0) {
-            const distToWall = (maxZ - buffer - playerPos.z) / dir.z;
-            if (distToWall > 0) maxAllowedDistance = Math.min(maxAllowedDistance, distToWall);
-        } else if (dir.z < 0) {
-            const distToWall = (minZ + buffer - playerPos.z) / dir.z;
-            if (distToWall > 0) maxAllowedDistance = Math.min(maxAllowedDistance, distToWall);
-        }
-
-        // 3. Apply Limit to Controls
-        controls.maxDistance = Math.max(0.5, maxAllowedDistance);
+        // Keep a sensible max zoom-out distance
+        controls.maxDistance = 15;
       },
       cleanup: () => {
-          // Reset default when leaving
-          this.experience.camera.controls.maxDistance = 15; 
+        // Reset default when leaving
+        this.experience.camera.controls.maxDistance = 15;
       },
     };
   }
@@ -557,6 +819,10 @@ export default class World {
     if (this.debug?.active && this.playerDebugElement && this.player?.mesh) {
       const p = this.player.mesh.position;
       this.playerDebugElement.textContent = `Player: x=${p.x.toFixed(2)} y=${p.y.toFixed(2)} z=${p.z.toFixed(2)}`;
+    }
+
+    if (this.debug?.active && this.physicsDebug) {
+      this.updatePhysicsDebug();
     }
   }
 }
