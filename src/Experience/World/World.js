@@ -15,6 +15,7 @@ export default class World {
     this.debug = this.experience.debug;
     this.playerDebugElement = null;
     this.physicsDebug = null;
+    this.originDebugMarker = null;
 
     // 1. Setup Physics
     this.physicsWorld = new CANNON.World();
@@ -39,6 +40,7 @@ export default class World {
 
       // Debug overlay for player coordinates (only in #debug mode)
       if (this.debug?.active) {
+        this.initOriginDebugMarker();
         this.initPlayerDebugOverlay();
         this.initPhysicsDebug();
       }
@@ -51,6 +53,41 @@ export default class World {
         this.loadLocation("Room");
       }
     });
+  }
+
+  initOriginDebugMarker() {
+    if (this.originDebugMarker) return;
+
+    const geometry = new THREE.SphereGeometry(0.12, 16, 12);
+    const material = new THREE.MeshBasicMaterial({
+      color: 0xff0000,
+      depthTest: false,
+      depthWrite: false,
+    });
+
+    const mesh = new THREE.Mesh(geometry, material);
+    mesh.name = "world-origin-debug";
+    mesh.position.set(0, 0, 0);
+    mesh.renderOrder = 999999;
+
+    this.scene.add(mesh);
+
+    this.originDebugMarker = {
+      enabled: true,
+      mesh,
+    };
+
+    // Optional GUI toggle
+    if (this.debug?.active && this.debug?.ui && this.debugFolder) {
+      const state = { originMarker: true };
+      this.debugFolder
+        .add(state, "originMarker")
+        .name("origin marker")
+        .onChange((v) => {
+          this.originDebugMarker.enabled = !!v;
+          this.originDebugMarker.mesh.visible = !!v;
+        });
+    }
   }
 
   findObjectByName(root, exactName) {
@@ -386,7 +423,7 @@ export default class World {
     };
   }
 
-  loadLocation(locationKey) {
+  loadLocation(locationKey, options = {}) {
     console.log(`🗺️ Loading: ${locationKey}`);
 
     const config = this.locationConfigs[locationKey];
@@ -399,7 +436,8 @@ export default class World {
     this.destroyCurrentLocation();
 
     // 2. Reset Player Position (Move to Origin + optional spawn offset)
-    this.resetPlayer(config.origin, config.spawnOffset);
+    const spawnOffset = options?.spawnOffset ?? config.spawnOffset;
+    this.resetPlayer(config.origin, spawnOffset);
 
     // 3. Instantiate New Location
     this.currentLocation = this.buildLocation(config);
@@ -600,7 +638,13 @@ export default class World {
             boundsBox: doorBox,
             interactionRadius: 1,
             options: [
-              { label: "Go to Store", destinationKey: "Store" },
+                {
+                  label: "Go to Store",
+                  onSelect: () =>
+                    this.loadLocation("Store", {
+                      spawnOffset: new THREE.Vector3(25, 0, 28),
+                    }),
+                },
             ],
           }
         );
