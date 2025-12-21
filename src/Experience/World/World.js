@@ -642,7 +642,7 @@ export default class World {
                   label: "Go to Store",
                   onSelect: () =>
                     this.loadLocation("Store", {
-                      spawnOffset: new THREE.Vector3(25, 0, 28),
+                      spawnOffset: new THREE.Vector3(15, 0, 15),
                     }),
                 },
             ],
@@ -985,8 +985,31 @@ export default class World {
       model = resource.scene;
       model.scale.set(1, 1, 1);
       model.position.copy(state.origin);
+      //model.position.y += 0;
       state.group.add(model);
     }
+
+    // --- Return warp (Store -> Room) at the same spot as Store spawn ---
+    const returnPortalPos = new THREE.Vector3(
+      state.origin.x + 15,
+      state.origin.y,
+      state.origin.z + 15
+    );
+
+    const returnPortal = new Portal(this, returnPortalPos, null, "Portal", 0x00ffcc, {
+      size: new THREE.Vector3(2, 2.5, 2),
+      interactionRadius: 1,
+      options: [
+        {
+          label: "Go to Room",
+          onSelect: () =>
+            this.loadLocation("Room", {
+              spawnOffset: new THREE.Vector3(2.5, 0, 2.5),
+            }),
+        },
+      ],
+    });
+    state.portals.push(returnPortal);
 
     const floorShape = new CANNON.Plane();
     const floorBody = new CANNON.Body({
@@ -1003,7 +1026,9 @@ export default class World {
     state.physicsBodies.push(floorBody);
 
     return {
-      update: () => {},
+      update: () => {
+        state.portals.forEach((p) => p.update());
+      },
       cleanup: () => {},
     };
   }
