@@ -149,12 +149,29 @@ export default class Player {
             if (child instanceof THREE.Mesh) {
                 child.castShadow = true
                 child.receiveShadow = true // Player should also receive shadows
+
+                // Prevent the player from disappearing when the camera is close:
+                // - Disable frustum culling (bounding boxes can be wrong on skinned meshes)
+                // - Render both sides so backfaces don't vanish if the camera gets inside
+                child.frustumCulled = false
+                const mat = child.material
+                if (Array.isArray(mat)) {
+                    mat.forEach((m) => {
+                        if (!m) return
+                        m.side = THREE.DoubleSide
+                        m.needsUpdate = true
+                    })
+                } else if (mat) {
+                    mat.side = THREE.DoubleSide
+                    mat.needsUpdate = true
+                }
             }
         })
 
         // Also set on root for safety
         this.mesh.castShadow = true
         this.mesh.receiveShadow = true
+        this.mesh.frustumCulled = false
 
         this.mesh.position.y = 5
 

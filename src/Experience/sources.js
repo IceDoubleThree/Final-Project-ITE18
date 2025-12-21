@@ -15,6 +15,11 @@ export default [
         path: '/models/Store1.glb'
     },
     {
+        name: 'noticeModel',
+        type: 'gltfModel',
+        path: '/models/notice.glb'
+    },
+    {
         name: 'roomModel',
         type: 'gltfModel',
         path: '/models/room.glb'

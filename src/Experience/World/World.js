@@ -797,6 +797,21 @@ export default class World {
       state.group.add(model);
     }
 
+    // Notice marker (3D exclamation mark) to locate the game starter warp
+    const noticeResource = this.resources.items.noticeModel;
+    if (noticeResource?.scene) {
+      const notice = noticeResource.scene.clone();
+      notice.position.set(state.origin.x + -12, state.origin.y + 2.5, state.origin.z + 7.2);
+      notice.rotation.y = Math.PI * 0.5;
+      notice.traverse((child) => {
+        if (child.isMesh) {
+          child.castShadow = true;
+          child.receiveShadow = true;
+        }
+      });
+      state.group.add(notice);
+    }
+
     // --- GAME STARTER GATE ---
     // This gate starts the real game run (Academy level 1).
     // Location: x=-12, z=7.25

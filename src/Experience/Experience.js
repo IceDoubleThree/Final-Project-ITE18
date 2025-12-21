@@ -67,6 +67,9 @@ export default class Experience
         // The real game run (timer/levels/kills) begins from the Store warp.
         console.log('🎮 Enter lobby requested')
 
+        // Enable mouse-look camera (requires a user gesture; this method is called from a click)
+        this.camera?.requestPointerLock?.()
+
         // Defer the location load until the world exists and is ready
         this._pendingStartLocationKey = locationKey ?? 'Room'
         this._pendingStartGame = true
@@ -74,6 +77,9 @@ export default class Experience
 
     startRun(startLevelKey = 'Academy') {
         console.log('🕹️ Start run requested')
+
+        // Enable mouse-look camera (can be triggered by keyboard interaction)
+        this.camera?.requestPointerLock?.()
 
         this.playShortTransition()
 
@@ -146,6 +152,7 @@ export default class Experience
     destroy() {
         this.sizes.off('resize')
         this.time.off('tick')
+        this.camera?.destroy?.()
         this.camera.controls.dispose()
         this.renderer.instance.dispose()
 
