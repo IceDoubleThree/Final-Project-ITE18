@@ -43,6 +43,7 @@ export default class Experience
         console.log('✅ World Created:', this.world)
 
         this._pendingStartGame = false
+        this._pendingStartLocationKey = null
 
 
         // Resize event
@@ -56,8 +57,9 @@ export default class Experience
         })
     }
 
-    startGame() {
+    startGame(locationKey = null) {
         console.log('🎮 Start game requested from main menu')
+        this._pendingStartLocationKey = locationKey
         this._pendingStartGame = true
     }
 
@@ -80,8 +82,12 @@ export default class Experience
 
         // 4. Start game once world and resources are ready
         if (this._pendingStartGame && this.world && this.world.environment) {
-            // For dev: start in the current World.js default
-            this.world.loadLocation('TestWorld')
+            // If a location was chosen from the debug menu, load it now.
+            if (this._pendingStartLocationKey) {
+                this.world.loadLocation(this._pendingStartLocationKey)
+            }
+
+            this._pendingStartLocationKey = null
             this._pendingStartGame = false
         }
     }

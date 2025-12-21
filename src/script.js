@@ -10,6 +10,47 @@ const btnSettings = document.getElementById('btn-settings')
 const btnHelp = document.getElementById('btn-help')
 const btnCredits = document.getElementById('btn-credits')
 
+// Debug-only: add location selector to the main menu
+const isDebugMenu = window.location.hash === '#debug'
+let debugLocationSelect = null
+
+if (isDebugMenu && mainMenu && btnStart && experience?.world?.locationConfigs) {
+	const locationKeys = Object.keys(experience.world.locationConfigs)
+	if (locationKeys.length) {
+		const wrapper = document.createElement('div')
+		wrapper.style.display = 'flex'
+		wrapper.style.flexDirection = 'column'
+		wrapper.style.gap = '6px'
+
+		const label = document.createElement('div')
+		label.textContent = 'Select location'
+		label.style.fontSize = '14px'
+		label.style.fontWeight = '600'
+		label.style.textAlign = 'left'
+		wrapper.appendChild(label)
+
+		debugLocationSelect = document.createElement('select')
+		debugLocationSelect.id = 'debug-location-select'
+		debugLocationSelect.style.width = '100%'
+		debugLocationSelect.style.padding = '10px'
+		debugLocationSelect.style.borderRadius = '10px'
+
+		locationKeys.forEach((key) => {
+			const opt = document.createElement('option')
+			opt.value = key
+			opt.textContent = key
+			debugLocationSelect.appendChild(opt)
+		})
+
+		// Default to Room if present, else first key
+		debugLocationSelect.value = locationKeys.includes('Room') ? 'Room' : locationKeys[0]
+		wrapper.appendChild(debugLocationSelect)
+
+		// Put selector ABOVE the Start Game button
+		btnStart.parentElement?.insertBefore(wrapper, btnStart)
+	}
+}
+
 if (btnStart) {
 	btnStart.addEventListener('click', () => {
 		// 1. Hide the Main Menu
@@ -34,7 +75,8 @@ if (btnStart) {
 
 		// 3. Start the Game Logic
 		if (experience && typeof experience.startGame === 'function') {
-			experience.startGame()
+			const selectedLocation = isDebugMenu ? debugLocationSelect?.value : null
+			experience.startGame(selectedLocation)
 		}
 	})
 }
