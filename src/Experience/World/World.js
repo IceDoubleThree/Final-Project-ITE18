@@ -3,7 +3,7 @@ import * as CANNON from "cannon-es";
 import Experience from "../Experience.js";
 import Environment from "./Environment.js";
 import PhysicsMaterials from "./PhysicsMaterials.js";
-import Player from "./player.js";
+import Player from "./Player.js"; 
 import NPC from "./NPC.js";
 import Portal from "./Portal.js";
 
@@ -13,6 +13,7 @@ export default class World {
     this.scene = this.experience.scene;
     this.resources = this.experience.resources;
     this.debug = this.experience.debug;
+    this.time = this.experience.time; // Need time for physics step
     this.playerDebugElement = null;
     this.physicsDebug = null;
     this.originDebugMarker = null;
@@ -55,6 +56,8 @@ export default class World {
     });
   }
 
+  // ... [Previous Helper Methods] ...
+
   initOriginDebugMarker() {
     if (this.originDebugMarker) return;
 
@@ -77,7 +80,6 @@ export default class World {
       mesh,
     };
 
-    // Optional GUI toggle
     if (this.debug?.active && this.debug?.ui && this.debugFolder) {
       const state = { originMarker: true };
       this.debugFolder
@@ -107,12 +109,6 @@ export default class World {
     return name.endsWith("_collider");
   }
 
-  /**
-   * Finds objects named with `_collider` suffix, hides them, and turns them into
-   * static Cannon bodies (fast primitive Box colliders).
-   *
-   * Returns an array of collider objects found.
-   */
   createPhysicsBodiesFromColliders(model, state, options = {}) {
     if (!model || !state) return [];
 
@@ -134,10 +130,8 @@ export default class World {
     const tmpSize = new THREE.Vector3();
 
     for (const obj of colliders) {
-      // Always invisible in the render, still active for physics
       obj.visible = false;
 
-      // Prefer oriented box based on local geometry bounds (Mesh)
       if (obj instanceof THREE.Mesh && obj.geometry) {
         const geometry = obj.geometry;
         if (!geometry.boundingBox) geometry.computeBoundingBox();
@@ -150,7 +144,6 @@ export default class World {
           obj.getWorldScale(worldScale);
           obj.getWorldQuaternion(worldQuat);
 
-          // Convert local center to world
           const centerWorld = tmpCenter.clone();
           obj.localToWorld(centerWorld);
 
@@ -171,7 +164,6 @@ export default class World {
         }
       }
 
-      // Fallback: axis-aligned world AABB box (works for Groups too)
       const worldBox = new THREE.Box3().setFromObject(obj);
       worldBox.getCenter(tmpCenter);
       worldBox.getSize(tmpSize);
@@ -215,11 +207,10 @@ export default class World {
       group,
       material,
       planeGeometry,
-      meshes: new Map(), // key: `${body.id}:${shapeIndex}`
+      meshes: new Map(),
       geometryCache: new Map(),
     };
 
-    // Optional GUI toggle
     if (this.debug?.active && this.debug?.ui && this.debugFolder) {
       const state = { physicsDebug: true };
       this.debugFolder
@@ -261,7 +252,6 @@ export default class World {
           shape.height,
           shape.numSegments
         );
-        // Cannon cylinders are oriented along X; Three cylinders are along Y.
         geom.rotateZ(Math.PI * 0.5);
         cache.set(key, geom);
       }
@@ -300,7 +290,6 @@ export default class World {
         const offset = body.shapeOffsets[i];
         const orient = body.shapeOrientations[i];
 
-        // World position = body.position + body.quaternion * offset
         const ox = offset?.x ?? 0;
         const oy = offset?.y ?? 0;
         const oz = offset?.z ?? 0;
@@ -313,7 +302,6 @@ export default class World {
           body.position.z + rotatedOffset.z
         );
 
-        // World quaternion = body.quaternion * shapeOrientation
         const qBody = body.quaternion;
         const qShape = orient || new CANNON.Quaternion(0, 0, 0, 1);
         const qWorld = qBody.mult(qShape);
@@ -321,7 +309,6 @@ export default class World {
       }
     }
 
-    // Remove stale debug meshes (bodies/shapes removed)
     for (const [key, mesh] of meshes.entries()) {
       if (seenKeys.has(key)) continue;
       group.remove(mesh);
@@ -353,7 +340,6 @@ export default class World {
   setupDevMenu() {
     const keys = Object.keys(this.locationConfigs);
 
-    // Prefer debug UI when available
     if (this.debug?.active && this.debug.ui) {
       this.debugFolder = this.debug.ui.addFolder("world");
       this.debugState = { location: keys[0] || null };
@@ -372,7 +358,6 @@ export default class World {
         )
         .name("reload");
 
-      // If physics debug already initialized, expose toggle.
       if (this.physicsDebug) {
         const state = { physicsDebug: this.physicsDebug.enabled };
         this.debugFolder
@@ -383,8 +368,6 @@ export default class World {
             this.physicsDebug.group.visible = !!v;
           });
       }
-
-      return;
     }
   }
 
@@ -395,7 +378,7 @@ export default class World {
         origin: new THREE.Vector3(0, 0, 0),
         spawnOffset: new THREE.Vector3(6.5, 0, 2),
         size: { width: 50, depth: 50 },
-        background: "#000000", // Dark sky for Room
+        background: "#000000",
         build: (state) => this.buildRoom(state),
       },
       StageDesign: {
@@ -420,6 +403,14 @@ export default class World {
         backgroundTextureKey: "storeSky",
         build: (state) => this.buildStore(state),
       },
+      Forest: {
+        key: "Forest",
+        origin: new THREE.Vector3(0, 0, 0),
+        size: { width: 100, depth: 100 },
+        background: "#1e2f23",
+        fog: { color: "#1e2f23", near: 5, far: 40 },
+        build: (state) => this.buildForest(state),
+      },
     };
   }
 
@@ -432,25 +423,18 @@ export default class World {
       return;
     }
 
-    // 1. Cleanup Old Location
     this.destroyCurrentLocation();
 
-    // 2. Reset Player Position (Move to Origin + optional spawn offset)
     const spawnOffset = options?.spawnOffset ?? config.spawnOffset;
     this.resetPlayer(config.origin, spawnOffset);
 
-    // 3. Instantiate New Location
     this.currentLocation = this.buildLocation(config);
-
-    // 4. Activate Physics
     this.isPhysicsActive = true;
 
-    // 5. Update Environment (if texture exists)
     if (this.environment && this.environment.environmentMap) {
       this.environment.environmentMap.updateMaterials();
     }
 
-    // Update debug selection if needed
     if (this.debugState) this.debugState.location = locationKey;
   }
 
@@ -474,11 +458,9 @@ export default class World {
     const group = new THREE.Group();
     this.scene.add(group);
 
-    // Apply environment per location
     if (config.backgroundTextureKey) {
       const tex = this.resources.items[config.backgroundTextureKey];
       if (tex) {
-        // Ensure correct color space for skies
         if ("colorSpace" in tex) tex.colorSpace = THREE.SRGBColorSpace;
         else tex.encoding = THREE.sRGBEncoding;
         this.scene.background = tex;
@@ -510,7 +492,6 @@ export default class World {
       debugBoundingBoxes: [],
     };
 
-    // Debug perimeter helper
     if (this.debug?.active) {
       const perimeter = this.createPerimeterHelper(config.size);
       perimeter.position.copy(config.origin);
@@ -522,7 +503,6 @@ export default class World {
     if (buildResult?.update) state.updates.push(buildResult.update);
     if (buildResult?.cleanup) state.customCleanup = buildResult.cleanup;
 
-    // Debug bounding boxes for all meshes in this location
     if (this.debug?.active) {
       state.group.traverse((obj) => {
         if (obj instanceof THREE.Mesh) {
@@ -557,12 +537,9 @@ export default class World {
   destroyCurrentLocation() {
     if (!this.currentLocation) return;
 
-    console.log("🧹 Destroying old location...");
     const loc = this.currentLocation;
-
     if (loc.customCleanup) loc.customCleanup();
 
-    // Cleanup NPCs
     if (loc.npcs) {
       loc.npcs.forEach((npc) => {
         if (npc.prompt && npc.prompt.remove) npc.prompt.remove();
@@ -573,32 +550,24 @@ export default class World {
       });
     }
 
-    // Cleanup Portals
     if (loc.portals) {
-      loc.portals.forEach((portal) => {
-        portal.destroy();
-      });
+      loc.portals.forEach((portal) => portal.destroy());
     }
 
     loc.physicsBodies.forEach((body) => this.physicsWorld.removeBody(body));
-
     loc.disposables.forEach((item) => {
       if (item?.dispose) item.dispose();
     });
 
     if (loc.group) this.scene.remove(loc.group);
-
     this.scene.background = null;
     this.scene.fog = null;
-
     this.currentLocation = null;
   }
 
-  // ==========================================
-  // BUILDER: Room (Starting Area)
-  // ==========================================
+  // --- BUILDERS ---
+
   buildRoom(state) {
-    console.log("🏗️ Building Room (Start)");
     const resource = this.resources.items.roomModel;
     let model = null;
 
@@ -616,16 +585,13 @@ export default class World {
         }
       });
 
-      // --- `_collider` meshes: invisible + physics bodies ---
       const colliderObjects = this.createPhysicsBodiesFromColliders(model, state, {
         material: this.materials.materials.floor,
       });
 
-      // --- Door_Default_0 warp area (Room -> Store) ---
       const doorObj = this.findObjectByName(model, "Door_Default_0");
       if (doorObj) {
         const doorBox = new THREE.Box3().setFromObject(doorObj);
-        // Expand the trigger box a bit so it's easier to hit
         doorBox.expandByVector(new THREE.Vector3(0.6, 0.6, 0.6));
 
         const doorPortal = new Portal(
@@ -638,28 +604,23 @@ export default class World {
             boundsBox: doorBox,
             interactionRadius: 1,
             options: [
-                {
-                  label: "Go to Store",
-                  onSelect: () =>
-                    this.loadLocation("Store", {
-                      spawnOffset: new THREE.Vector3(15, 0, 15),
-                    }),
-                },
+              {
+                label: "Go to Store",
+                onSelect: () =>
+                  this.loadLocation("Store", {
+                    spawnOffset: new THREE.Vector3(15, 0, 15),
+                  }),
+              },
             ],
           }
         );
-
         state.portals.push(doorPortal);
-      } else if (this.debug?.active) {
-        console.warn("⚠️ Door_Default_0 not found in room model; Store door warp not created.");
       }
 
-      // If colliders exist, use their bounds for camera limits.
       if (colliderObjects.length > 0) {
         const combined = new THREE.Box3().makeEmpty();
         colliderObjects.forEach((obj) => combined.expandByObject(obj));
 
-        // Camera padding from walls/colliders (in world units)
         const cameraMargin = 0.5;
         state.cameraBounds = {
           minX: combined.min.x + cameraMargin,
@@ -669,12 +630,9 @@ export default class World {
         };
       }
 
-      // --- Wall-name based colliders (separate implementation) ---
-      // This keeps compatibility with older Room exports that had wall nodes,
-      // and can coexist with `_collider` meshes.
+      // Walls
       const targetWallNames = new Set(["wall", "wall2"]);
       const wallObjects = [];
-
       model.updateWorldMatrix(true, true);
       model.traverse((obj) => {
         const name = (obj.name || "").toLowerCase();
@@ -683,129 +641,52 @@ export default class World {
 
       if (wallObjects.length > 0) {
         const combinedBox = new THREE.Box3().makeEmpty();
-        const center = new THREE.Vector3();
+        wallObjects.forEach((obj) => combinedBox.expandByObject(obj));
+        
+        // Fallback size check
         const size = new THREE.Vector3();
-
-        wallObjects.forEach((obj) => {
-          combinedBox.expandByObject(obj);
-        });
-
-        // Fallback if bounds are degenerate (common when the named node is just a pivot)
         combinedBox.getSize(size);
-        if (size.x < 0.01 || size.z < 0.01) {
-          const fallback = new THREE.Box3().setFromObject(model);
-          fallback.getSize(size);
-          if (size.x >= 0.01 && size.z >= 0.01) {
-            combinedBox.copy(fallback);
-          }
+        if (size.x < 0.01) {
+            new THREE.Box3().setFromObject(model).getSize(size);
         }
 
+        const center = new THREE.Vector3();
         combinedBox.getCenter(center);
         combinedBox.getSize(size);
 
-        if (this.debug?.active) {
-          console.log("🧱 Room wall bounds:", {
-            min: combinedBox.min.clone(),
-            max: combinedBox.max.clone(),
-            size: size.clone(),
-            center: center.clone(),
-            matched: wallObjects.map((o) => o.name),
-          });
-        }
-
-        // Only set camera bounds from walls if they weren't set by `_collider` meshes.
         if (!state.cameraBounds) {
-          // Camera padding from walls/colliders (in world units)
-          const cameraMargin = 0.2;
           state.cameraBounds = {
-            minX: combinedBox.min.x + cameraMargin,
-            maxX: combinedBox.max.x - cameraMargin,
-            minZ: combinedBox.min.z + cameraMargin,
-            maxZ: combinedBox.max.z - cameraMargin,
+            minX: combinedBox.min.x + 0.2,
+            maxX: combinedBox.max.x - 0.2,
+            minZ: combinedBox.min.z + 0.2,
+            maxZ: combinedBox.max.z - 0.2,
           };
         }
 
-        // Thickness of the collider walls (in world units)
         const thickness = 0.2;
         const halfT = thickness * 0.5;
-
         const addWallBox = (halfExtents, position) => {
-          const shape = new CANNON.Box(halfExtents);
-          const body = new CANNON.Body({
-            mass: 0,
-            material: this.materials.materials.floor,
-          });
-          body.addShape(shape);
-          body.position.set(position.x, position.y, position.z);
+          const body = new CANNON.Body({ mass: 0, material: this.materials.materials.floor });
+          body.addShape(new CANNON.Box(halfExtents));
+          body.position.copy(position);
           this.physicsWorld.addBody(body);
           state.physicsBodies.push(body);
         };
 
-        // Build 4 thin axis-aligned walls around the combined bounds.
-        // Left / Right walls (normal +/-X)
-        addWallBox(
-          new CANNON.Vec3(
-            halfT,
-            Math.max(size.y * 0.5, 0.1),
-            Math.max(size.z * 0.5, 0.1)
-          ),
-          new THREE.Vector3(combinedBox.min.x - halfT, center.y, center.z)
-        );
-        addWallBox(
-          new CANNON.Vec3(
-            halfT,
-            Math.max(size.y * 0.5, 0.1),
-            Math.max(size.z * 0.5, 0.1)
-          ),
-          new THREE.Vector3(combinedBox.max.x + halfT, center.y, center.z)
-        );
-
-        // Front / Back walls (normal +/-Z)
-        addWallBox(
-          new CANNON.Vec3(
-            Math.max(size.x * 0.5, 0.1),
-            Math.max(size.y * 0.5, 0.1),
-            halfT
-          ),
-          new THREE.Vector3(center.x, center.y, combinedBox.min.z - halfT)
-        );
-        addWallBox(
-          new CANNON.Vec3(
-            Math.max(size.x * 0.5, 0.1),
-            Math.max(size.y * 0.5, 0.1),
-            halfT
-          ),
-          new THREE.Vector3(center.x, center.y, combinedBox.max.z + halfT)
-        );
-      } else if (this.debug?.active) {
-        console.warn(
-          "⚠️ Could not find 'wall' or 'wall2' in room.glb; no wall boxes were created."
-        );
+        addWallBox(new CANNON.Vec3(halfT, size.y * 0.5, size.z * 0.5), new THREE.Vector3(combinedBox.min.x - halfT, center.y, center.z));
+        addWallBox(new CANNON.Vec3(halfT, size.y * 0.5, size.z * 0.5), new THREE.Vector3(combinedBox.max.x + halfT, center.y, center.z));
+        addWallBox(new CANNON.Vec3(size.x * 0.5, size.y * 0.5, halfT), new THREE.Vector3(center.x, center.y, combinedBox.min.z - halfT));
+        addWallBox(new CANNON.Vec3(size.x * 0.5, size.y * 0.5, halfT), new THREE.Vector3(center.x, center.y, combinedBox.max.z + halfT));
       }
     }
 
-    // Floor Physics
-    const floorShape = new CANNON.Plane();
-    const floorBody = new CANNON.Body({
-      mass: 0,
-      shape: floorShape,
-      material: this.materials.materials.floor,
-    });
-    floorBody.position.set(state.origin.x, state.origin.y, state.origin.z);
-    floorBody.quaternion.setFromAxisAngle(
-      new CANNON.Vec3(1, 0, 0),
-      -Math.PI * 0.5
-    );
+    const floorBody = new CANNON.Body({ mass: 0, shape: new CANNON.Plane(), material: this.materials.materials.floor });
+    floorBody.position.copy(state.origin);
+    floorBody.quaternion.setFromAxisAngle(new CANNON.Vec3(1, 0, 0), -Math.PI * 0.5);
     this.physicsWorld.addBody(floorBody);
     state.physicsBodies.push(floorBody);
 
-    // --- Portal ---
-    const portalPos = new THREE.Vector3(
-      state.origin.x - 4.4, 
-      state.origin.y,
-      state.origin.z - 2
-    );
-    const portal = new Portal(this, portalPos, null, "Portal", 0xffff00, {
+    const portal = new Portal(this, new THREE.Vector3(state.origin.x - 4.4, state.origin.y, state.origin.z - 2), null, "Portal", 0xffff00, {
       size: new THREE.Vector3(2, 2.5, 2),
       interactionRadius: 1,
       options: [{ label: "Go to Stage Area", destinationKey: "StageDesign" }],
@@ -815,124 +696,59 @@ export default class World {
     return {
       update: () => {
         state.portals.forEach((p) => p.update());
-
-        // --- CAMERA CLAMP INSIDE ROOM BOUNDS (Room) ---
+        // Camera clamping
         const bounds = state.cameraBounds;
         const camera = this.experience.camera;
-        if (!bounds || !camera?.instance || !camera.controls) return;
-
-        const controls = camera.controls;
-        const cameraPos = camera.instance.position;
-        const target = controls.target;
-        // Small extra margin to avoid sitting exactly on the bounds.
-        const margin = 0.05;
-        const roofY = 5.2;
-
-        // Clamp camera position inside box defined by room bounds and roof height
-        cameraPos.x = Math.min(
-          bounds.maxX - margin,
-          Math.max(bounds.minX + margin, cameraPos.x)
-        );
-        cameraPos.z = Math.min(
-          bounds.maxZ - margin,
-          Math.max(bounds.minZ + margin, cameraPos.z)
-        );
-        cameraPos.y = Math.min(roofY, cameraPos.y);
-
-        // Clamp orbit target as well so zoom/orbit stays inside
-        if (target) {
-          target.x = Math.min(
-            bounds.maxX - margin,
-            Math.max(bounds.minX + margin, target.x)
-          );
-          target.z = Math.min(
-            bounds.maxZ - margin,
-            Math.max(bounds.minZ + margin, target.z)
-          );
-          target.y = Math.min(roofY, target.y);
+        if (bounds && camera?.instance && camera.controls) {
+          const pos = camera.instance.position;
+          const target = camera.controls.target;
+          const m = 0.05;
+          pos.x = Math.max(bounds.minX + m, Math.min(bounds.maxX - m, pos.x));
+          pos.z = Math.max(bounds.minZ + m, Math.min(bounds.maxZ - m, pos.z));
+          pos.y = Math.min(5.2, pos.y);
+          if(target) {
+            target.x = Math.max(bounds.minX + m, Math.min(bounds.maxX - m, target.x));
+            target.z = Math.max(bounds.minZ + m, Math.min(bounds.maxZ - m, target.z));
+            target.y = Math.min(5.2, target.y);
+          }
+          camera.controls.maxDistance = 15;
         }
-
-        // Keep a sensible max zoom-out distance
-        controls.maxDistance = 15;
       },
-      cleanup: () => {
-        // Reset default when leaving
-        this.experience.camera.controls.maxDistance = 15;
-      },
+      cleanup: () => { this.experience.camera.controls.maxDistance = 15; },
     };
   }
 
-  // ==========================================
-  // BUILDER: Stage Design
-  // ==========================================
   buildStageDesign(state) {
-    console.log("🏗️ STARTING BUILD: Stage Design");
-
-    // 1. Load the GLB Model
     const resource = this.resources.items.stageModel;
-    if (resource && resource.scene) {
+    if (resource?.scene) {
       const model = resource.scene;
       model.position.copy(state.origin);
       state.group.add(model);
-
-      model.traverse((child) => {
-        if (child instanceof THREE.Mesh) {
-          child.castShadow = true;
-          child.receiveShadow = true;
-        }
-      });
+      model.traverse((child) => { if (child.isMesh) { child.castShadow = true; child.receiveShadow = true; }});
     }
 
-    // 2. Physics Floor
-    const floorShape = new CANNON.Plane();
-    const floorBody = new CANNON.Body({
-      mass: 0,
-      shape: floorShape,
-      material: this.materials.materials.floor,
-    });
-    floorBody.position.set(state.origin.x, state.origin.y, state.origin.z);
-    floorBody.quaternion.setFromAxisAngle(
-      new CANNON.Vec3(1, 0, 0),
-      -Math.PI * 0.5
-    );
+    const floorBody = new CANNON.Body({ mass: 0, shape: new CANNON.Plane(), material: this.materials.materials.floor });
+    floorBody.position.copy(state.origin);
+    floorBody.quaternion.setFromAxisAngle(new CANNON.Vec3(1, 0, 0), -Math.PI * 0.5);
     this.physicsWorld.addBody(floorBody);
     state.physicsBodies.push(floorBody);
 
-    // 3. Portal (Fixed Position)
-    const portalPos = new THREE.Vector3(
-      state.origin.x + 5,
-      state.origin.y,
-      state.origin.z - 5
-    );
-    const portal = new Portal(this, portalPos, null, "Portal", 0xffff00, {
+    const portalPos = new THREE.Vector3(state.origin.x + 5, state.origin.y, state.origin.z - 5);
+    state.portals.push(new Portal(this, portalPos, null, "Portal", 0xffff00, {
       size: new THREE.Vector3(2, 2.5, 2),
       interactionRadius: 1,
       options: [{ label: "Go to Empty Stage", destinationKey: "BlankStage" }],
-    });
-    state.portals.push(portal);
+    }));
+    
+    const pl = new THREE.PointLight(0xffff00, 1, 10);
+    pl.position.copy(portalPos).add(new THREE.Vector3(0,2,0));
+    state.group.add(pl);
 
-    const portalLight = new THREE.PointLight(0xffff00, 1, 10);
-    portalLight.position.copy(portalPos);
-    portalLight.position.y += 2;
-    state.group.add(portalLight);
-
-    return {
-      update: () => {
-        state.portals.forEach((p) => p.update());
-      },
-      cleanup: () => {},
-    };
+    return { update: () => state.portals.forEach((p) => p.update()) };
   }
 
-  // ==========================================
-  // BUILDER: Blank Stage
-  // ==========================================
   buildBlankStage(state) {
-    console.log("🏗️ Building Blank Stage...");
-    const floorGeometry = new THREE.PlaneGeometry(
-      state.size.width,
-      state.size.depth
-    );
+    const floorGeometry = new THREE.PlaneGeometry(state.size.width, state.size.depth);
     const floorMaterial = new THREE.MeshStandardMaterial({ color: 0x888888 });
     const floorMesh = new THREE.Mesh(floorGeometry, floorMaterial);
     floorMesh.rotation.x = -Math.PI * 0.5;
@@ -940,119 +756,143 @@ export default class World {
     floorMesh.position.copy(state.origin);
     state.group.add(floorMesh);
 
-    const floorShape = new CANNON.Plane();
-    const floorBody = new CANNON.Body({
-      mass: 0,
-      shape: floorShape,
-      material: this.materials.materials.floor,
-    });
-    floorBody.position.set(state.origin.x, state.origin.y, state.origin.z);
-    floorBody.quaternion.setFromAxisAngle(
-      new CANNON.Vec3(1, 0, 0),
-      -Math.PI * 0.5
-    );
+    const floorBody = new CANNON.Body({ mass: 0, shape: new CANNON.Plane(), material: this.materials.materials.floor });
+    floorBody.position.copy(state.origin);
+    floorBody.quaternion.setFromAxisAngle(new CANNON.Vec3(1, 0, 0), -Math.PI * 0.5);
     this.physicsWorld.addBody(floorBody);
     state.physicsBodies.push(floorBody);
 
-    const backPortalPos = new THREE.Vector3(
-      state.origin.x,
-      state.origin.y,
-      state.origin.z + 5
-    );
-    const backPortal = new Portal(this, backPortalPos, null, "Portal", 0xff0000, {
+    state.portals.push(new Portal(this, new THREE.Vector3(state.origin.x, state.origin.y, state.origin.z + 5), null, "Portal", 0xff0000, {
       size: new THREE.Vector3(2, 2.5, 2),
       interactionRadius: 1,
       options: [{ label: "Go to Stage Area", destinationKey: "StageDesign" }],
-    });
-    state.portals.push(backPortal);
-
+    }));
     state.disposables.push(floorGeometry, floorMaterial);
-
-    return {
-      update: () => {
-        state.portals.forEach((p) => p.update());
-      },
-    };
+    return { update: () => state.portals.forEach((p) => p.update()) };
   }
 
-  // ==========================================
-  // BUILDER: Store
-  // ==========================================
   buildStore(state) {
     const resource = this.resources.items.storeModel;
-    let model = null;
     if (resource?.scene) {
-      model = resource.scene;
+      const model = resource.scene;
       model.scale.set(1, 1, 1);
       model.position.copy(state.origin);
-      //model.position.y += 0;
       state.group.add(model);
     }
 
-    // --- Return warp (Store -> Room) at the same spot as Store spawn ---
-    const returnPortalPos = new THREE.Vector3(
-      state.origin.x + 15,
-      state.origin.y,
-      state.origin.z + 15
-    );
+    // --- NEW COMBINED PORTAL ---
+    // Location: x=15, z=15 (The original exit location)
+    const portalPosition = new THREE.Vector3(state.origin.x + 15, state.origin.y, state.origin.z + 15);
+    
+    state.portals.push(new Portal(
+      this, 
+      portalPosition, 
+      null, 
+      "Travel Gate", // Name of the portal
+      0xffffff,      // Color (White to show it's neutral)
+      {
+        size: new THREE.Vector3(2, 2.5, 2),
+        interactionRadius: 2,
+        options: [
+          // Option 1: Go to Room
+          { 
+            label: "Go to Room", 
+            onSelect: () => this.loadLocation("Room", { spawnOffset: new THREE.Vector3(2.5, 0, 2.5) }) 
+          },
+          // Option 2: Go to Forest
+          { 
+            label: "Enter Forest", 
+            onSelect: () => this.loadLocation("Forest", { spawnOffset: new THREE.Vector3(0, 5, 5) }) 
+          }
+        ]
+      }
+    ));
 
-    const returnPortal = new Portal(this, returnPortalPos, null, "Portal", 0x00ffcc, {
-      size: new THREE.Vector3(2, 2.5, 2),
-      interactionRadius: 1,
-      options: [
-        {
-          label: "Go to Room",
-          onSelect: () =>
-            this.loadLocation("Room", {
-              spawnOffset: new THREE.Vector3(2.5, 0, 2.5),
-            }),
-        },
-      ],
-    });
-    state.portals.push(returnPortal);
-
-    const floorShape = new CANNON.Plane();
-    const floorBody = new CANNON.Body({
-      mass: 0,
-      shape: floorShape,
-      material: this.materials.materials.floor,
-    });
-    floorBody.position.set(state.origin.x, state.origin.y, state.origin.z);
-    floorBody.quaternion.setFromAxisAngle(
-      new CANNON.Vec3(1, 0, 0),
-      -Math.PI * 0.5
-    );
+    const floorBody = new CANNON.Body({ mass: 0, shape: new CANNON.Plane(), material: this.materials.materials.floor });
+    floorBody.position.copy(state.origin);
+    floorBody.quaternion.setFromAxisAngle(new CANNON.Vec3(1, 0, 0), -Math.PI * 0.5);
     this.physicsWorld.addBody(floorBody);
     state.physicsBodies.push(floorBody);
 
-    return {
-      update: () => {
-        state.portals.forEach((p) => p.update());
-      },
-      cleanup: () => {},
-    };
+    return { update: () => state.portals.forEach((p) => p.update()) };
   }
 
+  buildForest(state) {
+    const al = new THREE.AmbientLight('#ffffff', 0.8);
+    state.group.add(al); state.disposables.push(al);
+    const sl = new THREE.DirectionalLight('#ffffff', 2);
+    sl.position.set(10, 30, 10); sl.castShadow = true;
+    state.group.add(sl); state.disposables.push(sl);
+
+    const resource = this.resources.items.forestModel;
+    if (resource?.scene) {
+      const model = resource.scene.clone();
+      model.position.copy(state.origin);
+      state.group.add(model);
+      model.traverse((child) => {
+        if (child.isMesh) {
+          child.castShadow = true; child.receiveShadow = true;
+          // Fix unsupported textures to prevent warnings/black rendering
+          if(child.material) {
+             child.material.metalnessMap = null;
+             child.material.roughnessMap = null;
+             child.material.normalMap = null;
+             child.material.needsUpdate = true;
+          }
+        }
+      });
+      this.createPhysicsBodiesFromColliders(model, state, { material: this.materials.materials.floor });
+    }
+
+    const floorBody = new CANNON.Body({ mass: 0, shape: new CANNON.Plane(), material: this.materials.materials.floor });
+    floorBody.position.copy(state.origin);
+    floorBody.quaternion.setFromAxisAngle(new CANNON.Vec3(1, 0, 0), -Math.PI * 0.5);
+    this.physicsWorld.addBody(floorBody);
+    state.physicsBodies.push(floorBody);
+
+    state.portals.push(new Portal(this, new THREE.Vector3(state.origin.x, state.origin.y, state.origin.z + 5), null, "Exit Forest", 0x228822, {
+      size: new THREE.Vector3(2, 3, 2),
+      interactionRadius: 2,
+      options: [{ label: "Return to Store", onSelect: () => this.loadLocation("Store", { spawnOffset: new THREE.Vector3(-10, 0, 10) }) }]
+    }));
+
+    return { update: () => state.portals.forEach((p) => p.update()) };
+  }
+
+  // ==========================================
+  //  THE UPDATE METHOD
+  // ==========================================
   update() {
-    if (this.physicsWorld && this.isPhysicsActive) {
-      this.physicsWorld.step(1 / 60, this.experience.time.delta / 1000, 3);
+    // 1. Update Physics
+    // Using a fixed time step of 1/60, and passing delta in seconds
+    if (this.isPhysicsActive && this.physicsWorld) {
+      this.physicsWorld.step(1 / 60, this.experience.time.delta * 0.001, 3);
     }
 
-    if (this.currentLocation) {
-      this.currentLocation.updates?.forEach((fn) => fn());
-    }
-
+    // 2. Update Player
     if (this.player) {
       this.player.update();
     }
 
-    if (this.debug?.active && this.playerDebugElement && this.player?.mesh) {
-      const p = this.player.mesh.position;
-      this.playerDebugElement.textContent = `Player: x=${p.x.toFixed(2)} y=${p.y.toFixed(2)} z=${p.z.toFixed(2)}`;
+    // 3. Update Current Location Logic (Portals, etc)
+    if (this.currentLocation && this.currentLocation.updates) {
+      this.currentLocation.updates.forEach((updateFn) => updateFn());
     }
 
-    if (this.debug?.active && this.physicsDebug) {
+    // 4. Update NPCs
+    if (this.currentLocation && this.currentLocation.npcs) {
+      this.currentLocation.npcs.forEach((npc) => npc.update());
+    }
+
+    // 5. Update Physics Debugger
+    if (this.physicsDebug && this.physicsDebug.enabled) {
       this.updatePhysicsDebug();
+    }
+
+    // 6. Update Player Debug Overlay
+    if (this.playerDebugElement && this.player && this.player.mesh) {
+      const { x, y, z } = this.player.mesh.position;
+      this.playerDebugElement.textContent = `Player: x=${x.toFixed(2)} y=${y.toFixed(2)} z=${z.toFixed(2)}`;
     }
   }
 }

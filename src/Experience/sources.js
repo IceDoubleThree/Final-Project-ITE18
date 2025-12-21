@@ -20,8 +20,13 @@ export default [
         path: '/models/room.glb' 
     },
     {
+        name: 'forestModel',
+        type: 'gltfModel',
+        path: '/models/Forest.glb' 
+    },
+    {
         name: 'storeSky',
         type: 'texture',
         path: '/textures/citrus_orchard_road_puresky_2k.png'
-    }
+    },
 ]
