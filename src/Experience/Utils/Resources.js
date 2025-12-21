@@ -1,5 +1,6 @@
     import * as THREE from "three"
     import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js"
+    import { DRACOLoader } from "three/examples/jsm/loaders/DRACOLoader.js"
     import EventEmitter from "./EventEmitter"
 
     export default class Resources extends EventEmitter {
@@ -18,6 +19,13 @@
         setLoaders() {
             this.loaders = {}
             this.loaders.gltfLoader = new GLTFLoader()
+
+            // Enable Draco decoding for compressed GLB/GLTF files.
+            // Decoder files are served from Vite's publicDir (../static), under /draco/.
+            this.loaders.dracoLoader = new DRACOLoader()
+            this.loaders.dracoLoader.setDecoderPath(`${import.meta.env.BASE_URL}draco/`)
+            this.loaders.gltfLoader.setDRACOLoader(this.loaders.dracoLoader)
+
             this.loaders.textureLoader = new THREE.TextureLoader()
             this.loaders.cubeTextureLoader = new THREE.CubeTextureLoader()
         }
