@@ -392,6 +392,7 @@ export default class World {
         spawnOffset: new THREE.Vector3(0, 0, 5),
         size: { width: 80, depth: 80 },
         background: "#101015",
+        backgroundTextureKey: "storeSky",
         build: (state) => this.buildAcademy(state),
       },
       StageDesign: {
@@ -911,6 +912,22 @@ export default class World {
   }
 
   buildAcademy(state) {
+    // Sky inside Academy (use existing store sky texture)
+    const skyTex = this.resources.items.storeSky;
+    if (skyTex) {
+      if ("colorSpace" in skyTex) skyTex.colorSpace = THREE.SRGBColorSpace;
+      else skyTex.encoding = THREE.sRGBEncoding;
+
+      const skyGeo = new THREE.SphereGeometry(120, 48, 24);
+      const skyMat = new THREE.MeshBasicMaterial({ map: skyTex, side: THREE.BackSide, depthWrite: false });
+      const skyDome = new THREE.Mesh(skyGeo, skyMat);
+      skyDome.name = "academy-sky-dome";
+      skyDome.position.copy(state.origin);
+      skyDome.position.y += 20;
+      state.group.add(skyDome);
+      state.disposables.push(skyGeo, skyMat);
+    }
+
     const resource = this.resources.items.academyModel;
     if (resource?.scene) {
       const model = resource.scene.clone();

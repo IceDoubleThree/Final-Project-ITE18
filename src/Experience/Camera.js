@@ -62,7 +62,7 @@ export default class Camera {
             this.sizes.width / this.sizes.height,
             // Smaller near plane reduces close-up clipping (prevents player vanishing when camera is forced close)
             0.005,
-            100
+            300
         )
         // Default position before player loads
         this.instance.position.set(6, 4, 8)

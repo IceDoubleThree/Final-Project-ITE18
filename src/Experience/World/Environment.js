@@ -25,20 +25,36 @@ export default class Environment {
         // 2. Main Directional Light (Sun) - Warmer orange/yellow for anime aesthetic
         this.sunLight = new THREE.DirectionalLight("#ffd89b", 1.2) // Warm golden/orange
 
-        // Position for good lighting angle
-        this.sunLight.position.set(5, 8, 5)
+        // Keep the sun's direction stable but follow the player so the shadow
+        // camera volume stays centered on gameplay (prevents "shadows only work at certain distance")
+        this.sunFollow = {
+            enabled: true,
+            offset: new THREE.Vector3(5, 8, 5),
+        }
+
+        // Position for good lighting angle (will be updated each frame if follow is enabled)
+        this.sunLight.position.copy(this.sunFollow.offset)
 
         // Enhanced shadow settings for anime style
         this.sunLight.castShadow = true
-        this.sunLight.shadow.mapSize.set(2048, 2048) // Higher resolution for better quality
-        this.sunLight.shadow.camera.far = 20
-        this.sunLight.shadow.camera.left = -10
-        this.sunLight.shadow.camera.top = 10
-        this.sunLight.shadow.camera.right = 10
-        this.sunLight.shadow.camera.bottom = -10
+        // Higher resolution to keep shadows clean even with a larger shadow camera
+        this.sunLight.shadow.mapSize.set(4096, 4096)
+        // Expanded range so shadows don't get cut off in larger locations
+        this.sunLight.shadow.camera.near = 0.1
+        this.sunLight.shadow.camera.far = 250
+        // Make the shadow camera much larger to avoid a visible shadow edge on the ground
+        this.sunLight.shadow.camera.left = -120
+        this.sunLight.shadow.camera.top = 120
+        this.sunLight.shadow.camera.right = 120
+        this.sunLight.shadow.camera.bottom = -120
         this.sunLight.shadow.bias = -0.0001 // Reduce shadow acne
         this.sunLight.shadow.normalBias = 0.02 // Additional bias for smooth shadows
         this.sunLight.shadow.radius = 8 // Softer shadow edges
+
+        this.sunLight.shadow.camera.updateProjectionMatrix()
+
+        // Ensure the light target is in the scene (required for reliable directional shadows)
+        this.scene.add(this.sunLight.target)
 
         this.scene.add(this.sunLight)
 
@@ -64,6 +80,28 @@ export default class Environment {
             this.debugFolder.add(this.sunLight.position, 'y').min(-10).max(10).step(0.001).name('sunY')
             this.debugFolder.add(this.sunLight.position, 'z').min(-10).max(10).step(0.001).name('sunZ')
         }
+    }
+
+    update() {
+        if (!this.sunFollow?.enabled || !this.sunLight) return
+
+        const player = this.experience.world?.player
+        const meshPos = player?.mesh?.position
+        const bodyPos = player?.body?.position
+
+        const px = (bodyPos?.x ?? meshPos?.x)
+        const py = (bodyPos?.y ?? meshPos?.y)
+        const pz = (bodyPos?.z ?? meshPos?.z)
+        if (!Number.isFinite(px) || !Number.isFinite(py) || !Number.isFinite(pz)) return
+
+        // Keep shadows centered around the player
+        this.sunLight.target.position.set(px, py, pz)
+        this.sunLight.position.set(
+            px + this.sunFollow.offset.x,
+            py + this.sunFollow.offset.y,
+            pz + this.sunFollow.offset.z
+        )
+        this.sunLight.target.updateMatrixWorld()
     }
 
     setEnvironmentMap() {

@@ -127,6 +127,9 @@ export default class Experience
         // The player must move to their new position...
         this.world.update()
 
+        // Keep environment/shadows in sync with the player (anime-styled directional shadows)
+        this.world?.environment?.update?.()
+
         // Game timer / state
         this.game.update(this.time.delta)
         
