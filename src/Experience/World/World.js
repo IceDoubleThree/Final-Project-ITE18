@@ -56,6 +56,11 @@ export default class World {
     });
   }
 
+  startRun() {
+    // Starts the real game environment (timer/levels/kills) and loads level 1.
+    this.experience.startRun("Academy");
+  }
+
   // ... [Previous Helper Methods] ...
 
   initOriginDebugMarker() {
@@ -381,6 +386,14 @@ export default class World {
         background: "#000000",
         build: (state) => this.buildRoom(state),
       },
+      Academy: {
+        key: "Academy",
+        origin: new THREE.Vector3(0, 0, 0),
+        spawnOffset: new THREE.Vector3(0, 0, 5),
+        size: { width: 80, depth: 80 },
+        background: "#101015",
+        build: (state) => this.buildAcademy(state),
+      },
       StageDesign: {
         key: "StageDesign",
         origin: new THREE.Vector3(0, 0, 0),
@@ -430,6 +443,10 @@ export default class World {
 
     this.currentLocation = this.buildLocation(config);
     this.isPhysicsActive = true;
+
+    if (this.experience?.game?.active) {
+      this.experience.game.setLevel(locationKey);
+    }
 
     if (this.environment && this.environment.environmentMap) {
       this.environment.environmentMap.updateMaterials();
@@ -780,33 +797,52 @@ export default class World {
       state.group.add(model);
     }
 
-    // --- NEW COMBINED PORTAL ---
-    // Location: x=15, z=15 (The original exit location)
-    const portalPosition = new THREE.Vector3(state.origin.x + 15, state.origin.y, state.origin.z + 15);
-    
-    state.portals.push(new Portal(
-      this, 
-      portalPosition, 
-      null, 
-      "Travel Gate", // Name of the portal
-      0xffffff,      // Color (White to show it's neutral)
-      {
+    // --- GAME STARTER GATE ---
+    // This gate starts the real game run (Academy level 1).
+    // Location: x=-12, z=7.25
+    const gameGatePosition = new THREE.Vector3(
+      state.origin.x - 12,
+      state.origin.y,
+      state.origin.z + 7.25
+    );
+
+    state.portals.push(
+      new Portal(this, gameGatePosition, null, "Warp Gate", 0xffffff, {
         size: new THREE.Vector3(2, 2.5, 2),
         interactionRadius: 2,
         options: [
-          // Option 1: Go to Room
-          { 
-            label: "Go to Room", 
-            onSelect: () => this.loadLocation("Room", { spawnOffset: new THREE.Vector3(2.5, 0, 2.5) }) 
+          {
+            label: "Start Game",
+            onSelect: () => this.startRun(),
           },
-          // Option 2: Go to Forest
-          { 
-            label: "Enter Forest", 
-            onSelect: () => this.loadLocation("Forest", { spawnOffset: new THREE.Vector3(0, 5, 5) }) 
-          }
-        ]
-      }
-    ));
+        ],
+      })
+    );
+
+    // --- STORE -> LOBBY WARP ---
+    // Moved previous travel options here.
+    // Location: x=15, z=16
+    const lobbyWarpPosition = new THREE.Vector3(
+      state.origin.x + 15,
+      state.origin.y,
+      state.origin.z + 16
+    );
+
+    state.portals.push(
+      new Portal(this, lobbyWarpPosition, null, "Travel Gate", 0xffffff, {
+        size: new THREE.Vector3(2, 2.5, 2),
+        interactionRadius: 2,
+        options: [
+          {
+            label: "Go to Room",
+            onSelect: () =>
+              this.loadLocation("Room", {
+                spawnOffset: new THREE.Vector3(2.5, 0, 2.5),
+              }),
+          },
+        ],
+      })
+    );
 
     const floorBody = new CANNON.Body({ mass: 0, shape: new CANNON.Plane(), material: this.materials.materials.floor });
     floorBody.position.copy(state.origin);
@@ -855,6 +891,41 @@ export default class World {
       interactionRadius: 2,
       options: [{ label: "Return to Store", onSelect: () => this.loadLocation("Store", { spawnOffset: new THREE.Vector3(-10, 0, 10) }) }]
     }));
+
+    return { update: () => state.portals.forEach((p) => p.update()) };
+  }
+
+  buildAcademy(state) {
+    const resource = this.resources.items.academyModel;
+    if (resource?.scene) {
+      const model = resource.scene.clone();
+      model.position.copy(state.origin);
+      state.group.add(model);
+
+      model.traverse((child) => {
+        if (child.isMesh) {
+          child.castShadow = true;
+          child.receiveShadow = true;
+        }
+      });
+
+      this.createPhysicsBodiesFromColliders(model, state, {
+        material: this.materials.materials.floor,
+      });
+    }
+
+    const floorBody = new CANNON.Body({
+      mass: 0,
+      shape: new CANNON.Plane(),
+      material: this.materials.materials.floor,
+    });
+    floorBody.position.copy(state.origin);
+    floorBody.quaternion.setFromAxisAngle(
+      new CANNON.Vec3(1, 0, 0),
+      -Math.PI * 0.5
+    );
+    this.physicsWorld.addBody(floorBody);
+    state.physicsBodies.push(floorBody);
 
     return { update: () => state.portals.forEach((p) => p.update()) };
   }

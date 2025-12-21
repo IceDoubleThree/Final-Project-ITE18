@@ -2,6 +2,55 @@ import Experience from './Experience/Experience.js'
 
 const experience = new Experience(document.querySelector('canvas.webgl'))
 
+// --- Loading screen wiring ---
+const loadingScreen = document.getElementById('loading-screen')
+const loadingStatus = document.getElementById('loading-status')
+const loadingPercent = document.getElementById('loading-percent')
+const loadingBarFill = document.getElementById('loading-bar-fill')
+
+const setLoadingProgress = (loaded, toLoad, sourceName = null) => {
+	const safeToLoad = Math.max(0, Number(toLoad) || 0)
+	const safeLoaded = Math.max(0, Number(loaded) || 0)
+	const pct = safeToLoad > 0 ? Math.min(100, Math.round((safeLoaded / safeToLoad) * 100)) : 100
+
+	if (loadingBarFill) loadingBarFill.style.width = `${pct}%`
+	if (loadingPercent) loadingPercent.textContent = `${pct}%`
+	if (loadingStatus) {
+		if (sourceName) loadingStatus.textContent = `Loading ${sourceName} (${safeLoaded}/${safeToLoad})`
+		else loadingStatus.textContent = `Loading assets… (${safeLoaded}/${safeToLoad})`
+	}
+}
+
+const hideLoadingScreen = () => {
+	if (!loadingScreen) return
+	loadingScreen.classList.add('fade-out')
+	setTimeout(() => {
+		loadingScreen.style.display = 'none'
+	}, 650)
+}
+
+if (experience?.resources) {
+	// Set initial state (some assets may already be in-flight)
+	setLoadingProgress(experience.resources.loaded, experience.resources.toLoad)
+
+	experience.resources.on('progress', (p) => {
+		setLoadingProgress(p?.loaded, p?.toLoad, p?.source?.name ?? null)
+	})
+
+	experience.resources.on('error', (e) => {
+		// Keep it minimal: show an error line but still allow the app to proceed.
+		if (loadingStatus) {
+			const name = e?.source?.name ?? 'asset'
+			loadingStatus.textContent = `Failed to load ${name}. Continuing…`
+		}
+	})
+
+	experience.resources.on('ready', () => {
+		setLoadingProgress(experience.resources.loaded, experience.resources.toLoad)
+		hideLoadingScreen()
+	})
+}
+
 // Main menu wiring
 const mainMenu = document.getElementById('main-menu')
 const placeholder = document.getElementById('main-menu-placeholder')

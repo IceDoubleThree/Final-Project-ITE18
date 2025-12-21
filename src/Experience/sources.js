@@ -5,6 +5,11 @@ export default [
         path: '/models/main_character_v3.glb'
     },
     {
+        name: 'academyModel',
+        type: 'gltfModel',
+        path: '/models/academy.glb'
+    },
+    {
         name: 'storeModel',
         type: 'gltfModel',
         path: '/models/Store1.glb'

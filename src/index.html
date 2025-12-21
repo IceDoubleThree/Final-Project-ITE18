@@ -9,12 +9,26 @@
 </head>
 
 <body>
+    <!-- Loading Screen Overlay (blocks input until assets are ready) -->
+    <div id="loading-screen" class="loading-screen">
+        <div class="loading-center">
+            <div class="loading-title">Loading</div>
+            <div class="loading-bar" aria-label="Loading progress">
+                <div id="loading-bar-fill" class="loading-bar-fill" style="width: 0%"></div>
+            </div>
+            <div id="loading-percent" class="loading-percent">0%</div>
+        </div>
+        <div id="loading-status" class="loading-status">Preparing assets…</div>
+    </div>
+
     <!-- Main Menu Overlay -->
     <div id="main-menu" class="main-menu">
-        <div class="main-menu-panel">
-            <h1 class="main-menu-title">My Game</h1>
-            <p class="main-menu-subtitle">Development Build</p>
+        <div class="main-menu-header">
+            <div class="main-menu-title">My game</div>
+            <div class="main-menu-subtitle">Development Build</div>
+        </div>
 
+        <div class="main-menu-right">
             <div class="main-menu-buttons">
                 <button id="btn-start-game" class="menu-button primary">Start Game</button>
                 <button id="btn-settings" class="menu-button">Settings</button>

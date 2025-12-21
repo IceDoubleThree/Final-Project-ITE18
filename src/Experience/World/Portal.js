@@ -35,7 +35,7 @@ export default class Portal {
         this.menuOptions = Array.isArray(options.options) ? options.options : null
         if (!this.menuOptions) {
             // Default: single option to travel
-            const label = this.destinationKey ? `Go to ${this.name}` : `Interact with ${this.name}`
+            const label = `Go to ${this.name}`
             this.menuOptions = [{ label, destinationKey: this.destinationKey }]
         }
 
@@ -56,19 +56,52 @@ export default class Portal {
         document.addEventListener('keydown', this.onKeyDown)
     }
 
+    normalizeGoToLabel(label) {
+        const raw = String(label ?? '').trim()
+        const lower = raw.toLowerCase()
+
+        // Keep non-travel actions as-is
+        if (lower === 'start game') return raw
+
+        if (lower.startsWith('go to ')) return raw
+        if (lower.startsWith('enter ')) return `Go to ${raw.slice(6)}`
+        if (lower.startsWith('return to ')) return `Go to ${raw.slice(10)}`
+        if (lower.startsWith('travel to ')) return `Go to ${raw.slice(10)}`
+        if (lower.startsWith('warp to ')) return `Go to ${raw.slice(8)}`
+
+        return raw
+    }
+
+    isSingleAction() {
+        if (!Array.isArray(this.menuOptions) || this.menuOptions.length !== 1) return false
+        const opt = this.menuOptions[0]
+        if (!opt) return false
+        return typeof opt.onSelect === 'function' || !!opt.destinationKey || !!this.destinationKey
+    }
+
+    getPromptText() {
+        if (this.isSingleAction()) {
+            const label = this.normalizeGoToLabel(this.menuOptions[0]?.label)
+            return label
+        }
+        return 'Choose destination'
+    }
+
     createPromptElement() {
         this.prompt = document.createElement('div')
-        this.prompt.classList.add('interact-prompt')
+        this.prompt.classList.add('interact-prompt', 'portal-prompt')
+
+        const label = this.getPromptText()
         this.prompt.innerHTML = `
             <span class="key-icon">F</span>
-            <span>Interact: ${this.name}</span>
+            <span>${label}</span>
         `
         document.body.appendChild(this.prompt)
     }
 
     createOptionsElement() {
         this.optionsEl = document.createElement('div')
-        this.optionsEl.classList.add('interact-options')
+        this.optionsEl.classList.add('interact-options', 'portal-options')
         this.optionsEl.classList.add('hidden')
         document.body.appendChild(this.optionsEl)
         this.renderOptions()
@@ -80,13 +113,13 @@ export default class Portal {
         const buttons = this.menuOptions
             .map((opt, idx) => {
                 const key = idx + 1
-                const safeLabel = String(opt.label ?? `Option ${key}`)
+                const safeLabel = this.normalizeGoToLabel(opt.label ?? `Option ${key}`)
                 return `<button type="button" data-index="${idx}"><span class="opt-key">${key}</span>${safeLabel}</button>`
             })
             .join('')
 
         this.optionsEl.innerHTML = `
-            <div class="interact-options-title">${this.name}</div>
+            <div class="interact-options-title">Go to</div>
             <div class="interact-options-buttons">${buttons}</div>
         `
 
@@ -101,6 +134,12 @@ export default class Portal {
 
     handleInteract() {
         if (!this.isPlayerClose || !this.isActive) return
+
+        // No extra step: if there's only one action, do it immediately.
+        if (this.isSingleAction()) {
+            this.selectOption(0)
+            return
+        }
 
         if (!this.isMenuOpen) {
             this.openMenu()

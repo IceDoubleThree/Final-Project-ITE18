@@ -21,6 +21,12 @@ export default class Player {
         this.actions = {}
         this.currentAction = null
 
+        // --- GAME STATS (for future mechanics) ---
+        this.baseHp = 100
+        this.baseAttack = 1
+        this.hp = this.baseHp
+        this.attack = this.baseAttack
+
         // Physics configuration (capsule)
         this.physicsConfig = {
             radius: 0.3,
@@ -47,6 +53,11 @@ export default class Player {
         this.input.on('jump', () => {
             this.jump()
         })
+    }
+
+    resetStatsForNewGame() {
+        this.hp = this.baseHp
+        this.attack = this.baseAttack
     }
 
     setupDebug() {
