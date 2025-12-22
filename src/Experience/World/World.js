@@ -47,11 +47,15 @@ export default class World {
       }
 
       // --- Default Start Location: Room ---
-      if (this.debugState) {
-        this.debugState.location = "Room";
+      // If Experience.startGame/startRun already scheduled a location, don't auto-load here.
+      const hasPendingStart =
+        !!this.experience?._pendingStartGame && !!this.experience?._pendingStartLocationKey;
+
+      if (!hasPendingStart) {
+        if (this.debugState) this.debugState.location = "Room";
         this.loadLocation("Room");
-      } else {
-        this.loadLocation("Room");
+      } else if (this.debugState) {
+        this.debugState.location = this.experience._pendingStartLocationKey;
       }
     });
   }
@@ -214,6 +218,9 @@ export default class World {
       planeGeometry,
       meshes: new Map(),
       geometryCache: new Map(),
+      tmpOffset: new CANNON.Vec3(0, 0, 0),
+      tmpQuat: new CANNON.Quaternion(0, 0, 0, 1),
+      identityQuat: new CANNON.Quaternion(0, 0, 0, 1),
     };
 
     if (this.debug?.active && this.debug?.ui && this.debugFolder) {
@@ -273,7 +280,8 @@ export default class World {
   updatePhysicsDebug() {
     if (!this.physicsDebug?.enabled) return;
 
-    const { group, material, meshes } = this.physicsDebug;
+    const { group, material, meshes, tmpOffset, tmpQuat, identityQuat } =
+      this.physicsDebug;
     const seenKeys = new Set();
 
     for (const body of this.physicsWorld.bodies) {
@@ -295,22 +303,19 @@ export default class World {
         const offset = body.shapeOffsets[i];
         const orient = body.shapeOrientations[i];
 
-        const ox = offset?.x ?? 0;
-        const oy = offset?.y ?? 0;
-        const oz = offset?.z ?? 0;
-        const rotatedOffset = new CANNON.Vec3(ox, oy, oz);
-        body.quaternion.vmult(rotatedOffset, rotatedOffset);
+        tmpOffset.set(offset?.x ?? 0, offset?.y ?? 0, offset?.z ?? 0);
+        body.quaternion.vmult(tmpOffset, tmpOffset);
 
         mesh.position.set(
-          body.position.x + rotatedOffset.x,
-          body.position.y + rotatedOffset.y,
-          body.position.z + rotatedOffset.z
+          body.position.x + tmpOffset.x,
+          body.position.y + tmpOffset.y,
+          body.position.z + tmpOffset.z
         );
 
         const qBody = body.quaternion;
-        const qShape = orient || new CANNON.Quaternion(0, 0, 0, 1);
-        const qWorld = qBody.mult(qShape);
-        mesh.quaternion.set(qWorld.x, qWorld.y, qWorld.z, qWorld.w);
+        const qShape = orient || identityQuat;
+        qBody.mult(qShape, tmpQuat);
+        mesh.quaternion.set(tmpQuat.x, tmpQuat.y, tmpQuat.z, tmpQuat.w);
       }
     }
 
@@ -358,7 +363,7 @@ export default class World {
 
       this.debugFolder
         .add(
-          { reload: () => this.loadLocation(this.debugState.location) },
+          { reload: () => this.loadLocation(this.debugState.location, { forceReload: true }) },
           "reload"
         )
         .name("reload");
@@ -430,6 +435,16 @@ export default class World {
 
   loadLocation(locationKey, options = {}) {
     console.log(`🗺️ Loading: ${locationKey}`);
+
+    // Avoid redundant reloads of the same location unless explicitly requested.
+    // This prevents unintended player resets when multiple systems request the same load.
+    if (
+      !options?.forceReload &&
+      this.currentLocation?.key &&
+      this.currentLocation.key === locationKey
+    ) {
+      return;
+    }
 
     const config = this.locationConfigs[locationKey];
     if (!config) {
@@ -660,17 +675,17 @@ export default class World {
       if (wallObjects.length > 0) {
         const combinedBox = new THREE.Box3().makeEmpty();
         wallObjects.forEach((obj) => combinedBox.expandByObject(obj));
-        
-        // Fallback size check
+
+        // Fallback: if wall box is degenerate, use model bounds
         const size = new THREE.Vector3();
         combinedBox.getSize(size);
-        if (size.x < 0.01) {
-            new THREE.Box3().setFromObject(model).getSize(size);
+        if (size.lengthSq() < 1e-6) {
+          combinedBox.setFromObject(model);
+          combinedBox.getSize(size);
         }
 
         const center = new THREE.Vector3();
         combinedBox.getCenter(center);
-        combinedBox.getSize(size);
 
         if (!state.cameraBounds) {
           state.cameraBounds = {

@@ -39,4 +39,16 @@ export default [
         type: 'texture',
         path: '/textures/citrus_orchard_road_puresky_2k.png'
     },
+    {
+        name: 'daylightSky',
+        type: 'cubeTexture',
+        path: [
+            '/textures/sky/Daylight%20Box_Right.png',
+            '/textures/sky/Daylight%20Box_Left.png',
+            '/textures/sky/Daylight%20Box_Top.png',
+            '/textures/sky/Daylight%20Box_Bottom.png',
+            '/textures/sky/Daylight%20Box_Front.png',
+            '/textures/sky/Daylight%20Box_Back.png',
+        ]
+    },
 ]

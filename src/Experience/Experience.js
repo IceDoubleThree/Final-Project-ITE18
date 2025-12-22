@@ -17,11 +17,12 @@ let instance = null
 export default class Experience
 {
     constructor(canvas){
-        console.log('Here starts a great experience')
         if (instance) {
             return instance
         }
         instance = this
+
+        console.log('Here starts a great experience')
 
         //Global Access
         window.experience = this
@@ -50,6 +51,10 @@ export default class Experience
         this._pendingStartGame = false
         this._pendingStartLocationKey = null
 
+        // Prevent repeated lobby/run triggers (e.g. Space activating focused UI button)
+        this._lobbyStarted = false
+        this._runStarted = false
+
 
         // Resize event
         this.sizes.on('resize', () => {
@@ -65,6 +70,9 @@ export default class Experience
     startGame(locationKey = null) {
         // Main menu "Start" should only enter the lobby (Room/Store/etc.).
         // The real game run (timer/levels/kills) begins from the Store warp.
+        if (this._lobbyStarted) return
+        this._lobbyStarted = true
+
         console.log('🎮 Enter lobby requested')
 
         // Enable mouse-look camera (requires a user gesture; this method is called from a click)
@@ -76,6 +84,9 @@ export default class Experience
     }
 
     startRun(startLevelKey = 'Academy') {
+        if (this._runStarted) return
+        this._runStarted = true
+
         console.log('🕹️ Start run requested')
 
         // Enable mouse-look camera (can be triggered by keyboard interaction)

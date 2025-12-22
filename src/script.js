@@ -102,6 +102,13 @@ if (isDebugMenu && mainMenu && btnStart && experience?.world?.locationConfigs) {
 
 if (btnStart) {
 	btnStart.addEventListener('click', () => {
+		// Prevent repeated activation (e.g. Space key triggers click on focused button)
+		btnStart.disabled = true
+		btnStart.blur()
+		if (document.activeElement && typeof document.activeElement.blur === 'function') {
+			document.activeElement.blur()
+		}
+
 		// 1. Hide the Main Menu
 		if (mainMenu) {
 			mainMenu.classList.add('hidden')
@@ -127,7 +134,7 @@ if (btnStart) {
 			const selectedLocation = isDebugMenu ? debugLocationSelect?.value : null
 			experience.startGame(selectedLocation)
 		}
-	})
+	}, { once: true })
 }
 
 const setPlaceholder = (text) => {
