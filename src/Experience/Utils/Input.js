@@ -50,9 +50,14 @@ export default class Input extends EventEmitter {
                 this.keys.right = true
                 break
 
+            case 'Escape':
+                this.trigger('pause')
+                break
+
             case 'Space':
                 if(this.keys.jump === false) {
                     this.keys.jump = true
+                    console.log('Input: Space pressed -> triggering jump')
                     this.trigger('jump')
                 }
                 break

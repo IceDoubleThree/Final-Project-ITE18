@@ -36,14 +36,47 @@
                 <button id="btn-credits" class="menu-button">Credits</button>
             </div>
 
-            <div class="main-menu-placeholder" id="main-menu-placeholder">
-                <p>Select Settings, Help, or Credits to see placeholder info.</p>
+            <div class="menu-content-area" id="menu-content-area">
+                <div id="content-placeholder">
+                    <p>Select an option from the menu.</p>
+                </div>
+                
+                <div id="content-settings" class="menu-content-section" style="display: none;">
+                    <h3>Settings</h3>
+                    <div class="setting-item">
+                        <label for="setting-shadows">Enable Shadows</label>
+                        <input type="checkbox" id="setting-shadows">
+                    </div>
+                </div>
+
+                <div id="content-help" class="menu-content-section" style="display: none;">
+                    <h3>Help</h3>
+                    <p>WASD to move<br>Shift to run<br>Space to jump</p>
+                </div>
+
+                <div id="content-credits" class="menu-content-section" style="display: none;">
+                    <h3>Credits</h3>
+                    <p>Development Build</p>
+                </div>
             </div>
         </div>
     </div>
 
     <!-- NEW: Black Screen Overlay -->
     <div id="black-screen" class="black-screen"></div>
+
+    <!-- NEW: Pause Menu Overlay -->
+    <div id="pause-menu" class="pause-menu" style="display: none;">
+        <div class="pause-menu-content">
+            <div class="pause-menu-title">Paused</div>
+            <div class="pause-menu-buttons">
+                <button id="btn-pause-continue" class="menu-button primary">Continue</button>
+                <button id="btn-pause-options" class="menu-button">Options</button>
+                <button id="btn-pause-endgame" class="menu-button warning" style="display: none;">End Game</button>
+                <button id="btn-pause-mainmenu" class="menu-button" style="display: none;">Back to Main Menu</button>
+            </div>
+        </div>
+    </div>
 
     <canvas class="webgl"></canvas>
     <script type="module" src="./script.js"></script>

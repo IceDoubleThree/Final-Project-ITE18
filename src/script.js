@@ -138,19 +138,41 @@ if (btnStart) {
 }
 
 const setPlaceholder = (text) => {
-	if (placeholder) {
-		placeholder.textContent = text
-	}
+	// Legacy placeholder support removed
 }
 
-btnSettings?.addEventListener('click', () => {
-	setPlaceholder('Settings placeholder: audio, graphics, controls coming soon.')
-})
+// --- Menu Navigation ---
+const menuSections = {
+    placeholder: document.getElementById('content-placeholder'),
+    settings: document.getElementById('content-settings'),
+    help: document.getElementById('content-help'),
+    credits: document.getElementById('content-credits')
+}
 
-btnHelp?.addEventListener('click', () => {
-	setPlaceholder('Help placeholder: basic controls and tips will be shown here.')
-})
+const showMenuSection = (sectionName) => {
+    // Hide all
+    Object.values(menuSections).forEach(el => {
+        if(el) el.style.display = 'none'
+    })
+    
+    // Show target
+    const target = menuSections[sectionName]
+    if(target) target.style.display = 'block'
+}
 
-btnCredits?.addEventListener('click', () => {
-	setPlaceholder('Credits placeholder: team names and acknowledgements will go here.')
-})
+btnSettings?.addEventListener('click', () => showMenuSection('settings'))
+btnHelp?.addEventListener('click', () => showMenuSection('help'))
+btnCredits?.addEventListener('click', () => showMenuSection('credits'))
+
+// --- Settings Logic ---
+const shadowCheckbox = document.getElementById('setting-shadows')
+if (shadowCheckbox) {
+    // Set initial state based on renderer default (which we set to false)
+    shadowCheckbox.checked = false 
+    
+    shadowCheckbox.addEventListener('change', (e) => {
+        if (experience && experience.renderer) {
+            experience.renderer.setShadows(e.target.checked)
+        }
+    })
+}

@@ -35,9 +35,16 @@ export default function buildAcademy(state) {
       }
     });
 
-    this.createPhysicsBodiesFromColliders(model, state, {
+    const physicsMeshes = this.createPhysicsBodiesFromPhysicsMeshes(model, state, {
       material: this.materials.materials.floor,
     });
+
+    // Fallback: support older *_collider naming if no physics_* primitives exist
+    if (!physicsMeshes || physicsMeshes.length === 0) {
+      this.createPhysicsBodiesFromColliders(model, state, {
+        material: this.materials.materials.floor,
+      });
+    }
   }
 
   const floorBody = new CANNON.Body({

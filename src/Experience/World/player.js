@@ -13,6 +13,9 @@ export default class Player {
         this.resources = this.experience.resources
 
         this.canJump = false // State
+        this._feetLocalY = 0
+        this._groundedThisStep = false
+        this._lastGroundedTime = 0
         this.mesh = null
         this.animations = [] // Store animations from GLTF loader
         this.debug = this.experience.debug
@@ -51,6 +54,7 @@ export default class Player {
         })
 
         this.input.on('jump', () => {
+            console.log('Player: Jump requested. canJump:', this.canJump)
             this.jump()
         })
     }
@@ -304,38 +308,30 @@ export default class Player {
         this.body.addShape(sphereShape, new CANNON.Vec3(this.physicsConfig.offsetX, halfHeight + this.physicsConfig.offsetY, this.physicsConfig.offsetZ))
         this.body.addShape(sphereShape, new CANNON.Vec3(this.physicsConfig.offsetX, -halfHeight + this.physicsConfig.offsetY, this.physicsConfig.offsetZ))
 
+        // Local-space feet position relative to body.position
+        this._feetLocalY = (-halfHeight + this.physicsConfig.offsetY) - this.physicsConfig.radius
+
         this.body.fixedRotation = true
         this.body.updateMassProperties()
-
-        // --- FIX 1: Add Collision Listener ---
-        // This catches the exact frame we hit a bouncy object, 
-        // even if the physics engine pushes us away instantly.
-        this.body.addEventListener('collide', (e) => {
-            // Get the contact normal (Direction of impact)
-            const contactNormal = new CANNON.Vec3()
-            e.contact.ni.negate(contactNormal)
-
-            // If contactNormal.y > 0.5, the hit came from below (The Floor)
-            if (contactNormal.y > 0.5) {
-                this.canJump = true
-            }
-        })
 
         this.physicsWorld.addBody(this.body)
     }
 
     jump() {
         if (this.canJump) {
+            console.log('Player: Jumping!')
             // --- FIX 2: Respect Bounciness ---
             // If we are already flying up (from a bounce), add to it.
-            // If we are standing still, set it to 5.
-            if (this.body.velocity.y < 5) {
-                this.body.velocity.y = 5
+            // If we are standing still, set it to 12.
+            if (this.body.velocity.y < 8) {
+                this.body.velocity.y = 8
             } else {
                 // Optional: Super jump if bouncing?
                 // this.body.velocity.y += 2
             }
             this.canJump = false
+        } else {
+            console.log('Player: Jump failed - not grounded')
         }
     }
 
@@ -350,20 +346,12 @@ export default class Player {
             return // Stop processing movement
         }
 
-        // --- GROUND CHECK (Keep Raycast for walking logic) ---
-        const rayOrigin = this.body.position
-        const rayEnd = new CANNON.Vec3(rayOrigin.x, rayOrigin.y - 0.5, rayOrigin.z)
-        const ray = new CANNON.Ray(rayOrigin, rayEnd)
-        const result = new CANNON.RaycastResult()
-
-        const hasHit = this.physicsWorld.raycastClosest(rayOrigin, rayEnd, {
-            skipBackfaces: true
-        }, result)
-
-        // Only overwrite canJump if the Raycast hits. 
-        // If Raycast misses, we might still have canJump=true from the collision event above.
-        if (hasHit) {
+        // --- GROUND CHECK (Velocity-based) ---
+        // If vertical velocity is close to 0, we assume we are grounded.
+        if (Math.abs(this.body.velocity.y) < 0.1) {
             this.canJump = true
+        } else {
+            this.canJump = false
         }
 
         // --- MOVEMENT ---

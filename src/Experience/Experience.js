@@ -54,7 +54,10 @@ export default class Experience
         // Prevent repeated lobby/run triggers (e.g. Space activating focused UI button)
         this._lobbyStarted = false
         this._runStarted = false
+        this.isPaused = false
 
+        // Setup Pause Menu
+        this.setupPauseMenu()
 
         // Resize event
         this.sizes.on('resize', () => {
@@ -65,6 +68,96 @@ export default class Experience
         this.time.on('tick', () => {
             this.update()
         })
+
+        // Input events
+        this.input.on('pause', () => {
+            this.togglePause()
+        })
+    }
+
+    setupPauseMenu() {
+        this.pauseMenu = document.getElementById('pause-menu')
+        this.btnPauseContinue = document.getElementById('btn-pause-continue')
+        this.btnPauseOptions = document.getElementById('btn-pause-options')
+        this.btnPauseEndGame = document.getElementById('btn-pause-endgame')
+        this.btnPauseMainMenu = document.getElementById('btn-pause-mainmenu')
+
+        this.btnPauseContinue?.addEventListener('click', () => this.togglePause())
+        
+        this.btnPauseOptions?.addEventListener('click', () => {
+            console.log('Options clicked (Placeholder)')
+            // TODO: Show options
+        })
+
+        this.btnPauseEndGame?.addEventListener('click', () => {
+            this.togglePause() // Unpause first
+            this.game.game_end('premature_end')
+            
+            // Reset run state but keep lobby state
+            this._runStarted = false
+            
+            // Transition back to Room (Lobby)
+            this.playShortTransition()
+            setTimeout(() => {
+                this.world.loadLocation('Room')
+            }, 120)
+        })
+
+        this.btnPauseMainMenu?.addEventListener('click', () => {
+            this.togglePause() // Unpause logic (hide menu)
+            this.returnToMainMenu()
+        })
+    }
+
+    togglePause() {
+        // Only allow pause if we are in lobby or run
+        if (!this._lobbyStarted) return
+
+        this.isPaused = !this.isPaused
+
+        if (this.isPaused) {
+            this.time.pause()
+            if (this.pauseMenu) this.pauseMenu.style.display = 'flex'
+            document.exitPointerLock()
+            
+            // Update buttons based on state
+            if (this._runStarted) {
+                if (this.btnPauseEndGame) this.btnPauseEndGame.style.display = 'block'
+                if (this.btnPauseMainMenu) this.btnPauseMainMenu.style.display = 'none'
+            } else {
+                if (this.btnPauseEndGame) this.btnPauseEndGame.style.display = 'none'
+                if (this.btnPauseMainMenu) this.btnPauseMainMenu.style.display = 'block'
+            }
+
+        } else {
+            this.time.resume()
+            if (this.pauseMenu) this.pauseMenu.style.display = 'none'
+            this.camera?.requestPointerLock?.()
+        }
+    }
+
+    returnToMainMenu() {
+        // Reset states
+        this._lobbyStarted = false
+        this._runStarted = false
+        
+        // Stop game if running
+        if (this.game.active) {
+            this.game.stop()
+        }
+
+        // Show Main Menu
+        const mainMenu = document.getElementById('main-menu')
+        if (mainMenu) {
+            mainMenu.classList.remove('hidden')
+            mainMenu.style.display = 'block' // Ensure it's visible
+        }
+
+        // Hide Pause Menu (already done in togglePause, but safety)
+        if (this.pauseMenu) this.pauseMenu.style.display = 'none'
+
+        // Optional: Unload current world/location to save resources or reset
+        // this.world.destroyCurrentLocation() 
     }
 
     startGame(locationKey = null) {

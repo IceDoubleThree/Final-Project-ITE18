@@ -27,8 +27,20 @@ export default class PhysicsMaterials {
             this.materials.player,
             this.materials.floor,
             {
-                friction: 0.01,    // Low friction so player doesn't stick to walls
-                restitution: 0.0  // No bounce
+                // Keep friction extremely low so the player slides
+                // instead of "sticking" when rubbing against colliders.
+                friction: 0.0,
+                restitution: 0.0
+            }
+        )
+
+        // --- Player vs Default (Fallback for any collider left as default) ---
+        const playerDefault = new CANNON.ContactMaterial(
+            this.materials.player,
+            this.materials.default,
+            {
+                friction: 0.0,
+                restitution: 0.0
             }
         )
 
@@ -65,6 +77,7 @@ export default class PhysicsMaterials {
 
         // Add rules to the world
         this.physicsWorld.addContactMaterial(playerFloor)
+        this.physicsWorld.addContactMaterial(playerDefault)
         this.physicsWorld.addContactMaterial(playerIce)
         this.physicsWorld.addContactMaterial(playerBouncy)
         this.physicsWorld.addContactMaterial(defaultContact)

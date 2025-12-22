@@ -10,11 +10,28 @@ export default class Time extends EventEmitter
         this.current = this.start
         this.elapsed = 0
         this.delta = 16
+        this.paused = false
+        this.animationFrameId = null
 
-        window.requestAnimationFrame(() =>
-        {
-            this.tick()
-        })
+        this.tick = this.tick.bind(this)
+
+        this.animationFrameId = window.requestAnimationFrame(this.tick)
+    }
+
+    pause() {
+        if (this.paused) return
+        this.paused = true
+        if (this.animationFrameId) {
+            window.cancelAnimationFrame(this.animationFrameId)
+            this.animationFrameId = null
+        }
+    }
+
+    resume() {
+        if (!this.paused) return
+        this.paused = false
+        this.current = Date.now() // Reset current to avoid huge delta
+        this.tick()
     }
 
     tick()
@@ -26,9 +43,6 @@ export default class Time extends EventEmitter
 
         this.trigger('tick')
 
-        window.requestAnimationFrame(() =>
-        {
-            this.tick()
-        })
+        this.animationFrameId = window.requestAnimationFrame(this.tick)
     }
 }

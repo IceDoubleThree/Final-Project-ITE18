@@ -27,7 +27,7 @@ export default class World {
 
     // 1. Setup Physics
     this.physicsWorld = new CANNON.World();
-    this.physicsWorld.gravity.set(0, -9.82, 0);
+    this.physicsWorld.gravity.set(0, -20, 0);
     this.materials = new PhysicsMaterials(this.physicsWorld);
     this.isPhysicsActive = false; // Start paused
 
@@ -202,6 +202,85 @@ export default class World {
     return colliders;
   }
 
+  isPhysicsPrimitiveObject(object3d) {
+    const name = (object3d?.name || "").toLowerCase();
+    return name.startsWith("physics_cube") || name.startsWith("physics_cylinder");
+  }
+
+  createPhysicsBodiesFromPhysicsMeshes(model, state, options = {}) {
+    if (!model || !state) return [];
+
+    const material = options.material || this.materials.materials.floor;
+    const meshes = [];
+
+    model.updateWorldMatrix(true, true);
+
+    model.traverse((obj) => {
+      if (!this.isPhysicsPrimitiveObject(obj)) return;
+      if (obj instanceof THREE.Mesh && obj.geometry) meshes.push(obj);
+    });
+
+    if (meshes.length === 0) return meshes;
+
+    const worldScale = new THREE.Vector3();
+    const worldQuat = new THREE.Quaternion();
+    const tmpCenter = new THREE.Vector3();
+    const tmpSize = new THREE.Vector3();
+    const tmpCenterWorld = new THREE.Vector3();
+
+    for (const mesh of meshes) {
+      // Hide the editor-authored physics helper mesh
+      mesh.visible = false;
+
+      const geometry = mesh.geometry;
+      if (!geometry.boundingBox) geometry.computeBoundingBox();
+      const bbox = geometry.boundingBox;
+      if (!bbox) continue;
+
+      bbox.getCenter(tmpCenter);
+      bbox.getSize(tmpSize);
+
+      mesh.getWorldScale(worldScale);
+      mesh.getWorldQuaternion(worldQuat);
+
+      tmpCenterWorld.copy(tmpCenter);
+      mesh.localToWorld(tmpCenterWorld);
+
+      const name = (mesh.name || "").toLowerCase();
+      const sx = Math.max(0.001, Math.abs(tmpSize.x * worldScale.x));
+      const sy = Math.max(0.001, Math.abs(tmpSize.y * worldScale.y));
+      const sz = Math.max(0.001, Math.abs(tmpSize.z * worldScale.z));
+
+      if (name.startsWith("physics_cube")) {
+        const halfExtents = new CANNON.Vec3(sx * 0.5, sy * 0.5, sz * 0.5);
+        const body = new CANNON.Body({ mass: 0, material });
+        body.addShape(new CANNON.Box(halfExtents));
+        body.position.set(tmpCenterWorld.x, tmpCenterWorld.y, tmpCenterWorld.z);
+        body.quaternion.set(worldQuat.x, worldQuat.y, worldQuat.z, worldQuat.w);
+        this.physicsWorld.addBody(body);
+        state.physicsBodies.push(body);
+        continue;
+      }
+
+      if (name.startsWith("physics_cylinder")) {
+        const radius = Math.max(0.001, Math.max(sx, sz) * 0.5);
+        const height = sy;
+        const shape = new CANNON.Cylinder(radius, radius, height, 12);
+
+        const body = new CANNON.Body({ mass: 0, material });
+        // cannon-es Cylinder is Y-up by default
+        body.addShape(shape);
+        body.position.set(tmpCenterWorld.x, tmpCenterWorld.y, tmpCenterWorld.z);
+        body.quaternion.set(worldQuat.x, worldQuat.y, worldQuat.z, worldQuat.w);
+        this.physicsWorld.addBody(body);
+        state.physicsBodies.push(body);
+        continue;
+      }
+    }
+
+    return meshes;
+  }
+
   initPhysicsDebug() {
     if (this.physicsDebug) return;
 
@@ -271,7 +350,6 @@ export default class World {
           shape.height,
           shape.numSegments
         );
-        geom.rotateZ(Math.PI * 0.5);
         cache.set(key, geom);
       }
       return cache.get(key);

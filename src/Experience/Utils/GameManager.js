@@ -29,6 +29,21 @@ export default class GameManager {
     if (player?.resetStatsForNewGame) player.resetStatsForNewGame();
   }
 
+  game_end(state) {
+    console.log(`Game Ended. State: ${state}`);
+    
+    // Log stats before stopping
+    const timeStr = this.formatElapsed(this.elapsedMs);
+    console.log(`console: gamestats: time: ${timeStr}`);
+
+    this.stop();
+    
+    // If premature end, we might want to trigger some UI or event
+    if (state === 'premature_end') {
+        // Logic for quitting mid-game
+    }
+  }
+
   stop() {
     this.active = false;
     this.elapsedMs = 0;
