@@ -35,9 +35,34 @@ export default [
         path: '/models/Forest.glb' 
     },
     {
+        name: 'summerTreeBillboards',
+        type: 'gltfModel',
+        path: '/models/lodbillboard_summer_trees_pack.glb'
+    },
+    {
         name: 'storeSky',
         type: 'texture',
         path: '/textures/citrus_orchard_road_puresky_2k.png'
+    },
+    {
+        name: 'academyGroundBaseColor',
+        type: 'texture',
+        path: '/textures/Poliigon_GrassPatchyGround_4585/1K/Poliigon_GrassPatchyGround_4585_BaseColor.jpg'
+    },
+    {
+        name: 'academyGroundNormal',
+        type: 'texture',
+        path: '/textures/Poliigon_GrassPatchyGround_4585/1K/Poliigon_GrassPatchyGround_4585_Normal.png'
+    },
+    {
+        name: 'academyGroundRoughness',
+        type: 'texture',
+        path: '/textures/Poliigon_GrassPatchyGround_4585/1K/Poliigon_GrassPatchyGround_4585_Roughness.jpg'
+    },
+    {
+        name: 'academyGroundAO',
+        type: 'texture',
+        path: '/textures/Poliigon_GrassPatchyGround_4585/1K/Poliigon_GrassPatchyGround_4585_AmbientOcclusion.jpg'
     },
     {
         name: 'daylightSky',

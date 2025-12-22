@@ -2,6 +2,60 @@ import * as THREE from "three";
 import * as CANNON from "cannon-es";
 
 export default function buildAcademy(state) {
+  // Ground plane (Academy)
+  // Academy model's plane was removed; we render a new textured ground here.
+  {
+    const baseColor = this.resources.items.academyGroundBaseColor;
+    const normal = this.resources.items.academyGroundNormal;
+    const roughness = this.resources.items.academyGroundRoughness;
+    const ao = this.resources.items.academyGroundAO;
+
+    if (baseColor) {
+      const setRepeat = (tex, repeat) => {
+        if (!tex) return;
+        tex.wrapS = THREE.RepeatWrapping;
+        tex.wrapT = THREE.RepeatWrapping;
+        tex.repeat.set(repeat, repeat);
+        tex.needsUpdate = true;
+      };
+
+      // Repeat the textures across the 200x200 plane.
+      const repeat = 10;
+      setRepeat(baseColor, repeat);
+      setRepeat(normal, repeat);
+      setRepeat(roughness, repeat);
+      setRepeat(ao, repeat);
+
+      if ("colorSpace" in baseColor) baseColor.colorSpace = THREE.SRGBColorSpace;
+      else baseColor.encoding = THREE.sRGBEncoding;
+
+      const groundGeo = new THREE.PlaneGeometry(500, 500);
+      // Needed for aoMap
+      groundGeo.setAttribute(
+        "uv2",
+        new THREE.BufferAttribute(groundGeo.attributes.uv.array, 2)
+      );
+
+      const groundMat = new THREE.MeshStandardMaterial({
+        map: baseColor,
+        normalMap: normal || null,
+        roughnessMap: roughness || null,
+        aoMap: ao || null,
+        roughness: 1,
+        metalness: 0,
+      });
+
+      const ground = new THREE.Mesh(groundGeo, groundMat);
+      ground.name = "academy-ground";
+      ground.rotation.x = -Math.PI * 0.5;
+      ground.position.copy(state.origin);
+      ground.position.y = state.origin.y;
+      ground.receiveShadow = true;
+      state.group.add(ground);
+      state.disposables.push(groundGeo, groundMat);
+    }
+  }
+
   // Sky inside Academy (use existing store sky texture)
   const skyTex = this.resources.items.storeSky;
   if (skyTex) {
@@ -27,6 +81,86 @@ export default function buildAcademy(state) {
     const model = resource.scene.clone();
     model.position.copy(state.origin);
     state.group.add(model);
+
+    // --- Outside tree billboards (instanced) ---
+    // Uses /models/lodbillboard_summer_trees_pack.glb which is a group of 3 billboard meshes.
+    const treesResource = this.resources.items.summerTreeBillboards;
+    if (treesResource?.scene) {
+      const treeScene = treesResource.scene;
+      treeScene.updateMatrixWorld(true);
+
+      const billboardMeshes = [];
+      treeScene.traverse((child) => {
+        if (child.isMesh) billboardMeshes.push(child);
+      });
+
+      if (billboardMeshes.length > 0) {
+        const groundY = state.origin.y;
+
+        // Fixed spawn square around the location origin.
+        // "70 from axial radius to edge" => half-size 70 along X/Z from center.
+        const halfSize = 80;
+        const minX = state.origin.x - halfSize;
+        const maxX = state.origin.x + halfSize;
+        const minZ = state.origin.z - halfSize;
+        const maxZ = state.origin.z + halfSize;
+
+        const pickAlong = (min, max) => min + Math.random() * (max - min);
+
+        const clusterPositions = [];
+        const totalClusters = 50;
+
+        // Spawn on the square perimeter (random side each time)
+        for (let i = 0; i < totalClusters; i++) {
+          const side = Math.floor(Math.random() * 4);
+          if (side === 0) {
+            // West edge
+            clusterPositions.push(new THREE.Vector3(minX, groundY, pickAlong(minZ, maxZ)));
+          } else if (side === 1) {
+            // East edge
+            clusterPositions.push(new THREE.Vector3(maxX, groundY, pickAlong(minZ, maxZ)));
+          } else if (side === 2) {
+            // South edge
+            clusterPositions.push(new THREE.Vector3(pickAlong(minX, maxX), groundY, minZ));
+          } else {
+            // North edge
+            clusterPositions.push(new THREE.Vector3(pickAlong(minX, maxX), groundY, maxZ));
+          }
+        }
+
+        const tmpPos = new THREE.Vector3();
+        const tmpQuat = new THREE.Quaternion();
+        const tmpScale = new THREE.Vector3();
+        const tmpMatrix = new THREE.Matrix4();
+
+        for (const billboardMesh of billboardMeshes) {
+          billboardMesh.updateMatrixWorld(true);
+          billboardMesh.matrixWorld.decompose(tmpPos, tmpQuat, tmpScale);
+
+          const instanced = new THREE.InstancedMesh(
+            billboardMesh.geometry,
+            billboardMesh.material,
+            clusterPositions.length
+          );
+          instanced.name = `academy-tree-billboard-${billboardMesh.name || 'mesh'}`;
+          instanced.castShadow = true;
+          instanced.receiveShadow = true;
+
+          for (let i = 0; i < clusterPositions.length; i++) {
+            const p = clusterPositions[i];
+            tmpMatrix.compose(
+              new THREE.Vector3(p.x + tmpPos.x, p.y + tmpPos.y, p.z + tmpPos.z),
+              tmpQuat,
+              tmpScale
+            );
+            instanced.setMatrixAt(i, tmpMatrix);
+          }
+
+          instanced.instanceMatrix.needsUpdate = true;
+          state.group.add(instanced);
+        }
+      }
+    }
 
     model.traverse((child) => {
       if (child.isMesh) {
