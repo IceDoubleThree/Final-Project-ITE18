@@ -7,6 +7,13 @@ import Player from "./Player.js";
 import NPC from "./NPC.js";
 import Portal from "./Portal.js";
 
+import buildRoomImpl from "./Locations/buildRoom.js";
+import buildStageDesignImpl from "./Locations/buildStageDesign.js";
+import buildBlankStageImpl from "./Locations/buildBlankStage.js";
+import buildStoreImpl from "./Locations/buildStore.js";
+import buildForestImpl from "./Locations/buildForest.js";
+import buildAcademyImpl from "./Locations/buildAcademy.js";
+
 export default class World {
   constructor() {
     this.experience = new Experience();
@@ -601,380 +608,27 @@ export default class World {
   // --- BUILDERS ---
 
   buildRoom(state) {
-    const resource = this.resources.items.roomModel;
-    let model = null;
-
-    if (resource?.scene) {
-      model = resource.scene;
-      model.scale.set(1.3, 1.3, 1.3);
-      model.position.copy(state.origin);
-      model.position.y = -0.2;
-      state.group.add(model);
-
-      model.traverse((child) => {
-        if (child instanceof THREE.Mesh) {
-          child.castShadow = true;
-          child.receiveShadow = true;
-        }
-      });
-
-      const colliderObjects = this.createPhysicsBodiesFromColliders(model, state, {
-        material: this.materials.materials.floor,
-      });
-
-      const doorObj = this.findObjectByName(model, "Door_Default_0");
-      if (doorObj) {
-        const doorBox = new THREE.Box3().setFromObject(doorObj);
-        doorBox.expandByVector(new THREE.Vector3(0.6, 0.6, 0.6));
-
-        const doorPortal = new Portal(
-          this,
-          doorBox.getCenter(new THREE.Vector3()),
-          null,
-          "Door",
-          0x00ffcc,
-          {
-            boundsBox: doorBox,
-            interactionRadius: 1,
-            options: [
-              {
-                label: "Go to Store",
-                onSelect: () =>
-                  this.loadLocation("Store", {
-                    spawnOffset: new THREE.Vector3(15, 0, 15),
-                  }),
-              },
-            ],
-          }
-        );
-        state.portals.push(doorPortal);
-      }
-
-      if (colliderObjects.length > 0) {
-        const combined = new THREE.Box3().makeEmpty();
-        colliderObjects.forEach((obj) => combined.expandByObject(obj));
-
-        const cameraMargin = 0.5;
-        state.cameraBounds = {
-          minX: combined.min.x + cameraMargin,
-          maxX: combined.max.x - cameraMargin,
-          minZ: combined.min.z + cameraMargin,
-          maxZ: combined.max.z - cameraMargin,
-        };
-      }
-
-      // Walls
-      const targetWallNames = new Set(["wall", "wall2"]);
-      const wallObjects = [];
-      model.updateWorldMatrix(true, true);
-      model.traverse((obj) => {
-        const name = (obj.name || "").toLowerCase();
-        if (targetWallNames.has(name)) wallObjects.push(obj);
-      });
-
-      if (wallObjects.length > 0) {
-        const combinedBox = new THREE.Box3().makeEmpty();
-        wallObjects.forEach((obj) => combinedBox.expandByObject(obj));
-
-        // Fallback: if wall box is degenerate, use model bounds
-        const size = new THREE.Vector3();
-        combinedBox.getSize(size);
-        if (size.lengthSq() < 1e-6) {
-          combinedBox.setFromObject(model);
-          combinedBox.getSize(size);
-        }
-
-        const center = new THREE.Vector3();
-        combinedBox.getCenter(center);
-
-        if (!state.cameraBounds) {
-          state.cameraBounds = {
-            minX: combinedBox.min.x + 0.2,
-            maxX: combinedBox.max.x - 0.2,
-            minZ: combinedBox.min.z + 0.2,
-            maxZ: combinedBox.max.z - 0.2,
-          };
-        }
-
-        const thickness = 0.2;
-        const halfT = thickness * 0.5;
-        const addWallBox = (halfExtents, position) => {
-          const body = new CANNON.Body({ mass: 0, material: this.materials.materials.floor });
-          body.addShape(new CANNON.Box(halfExtents));
-          body.position.copy(position);
-          this.physicsWorld.addBody(body);
-          state.physicsBodies.push(body);
-        };
-
-        addWallBox(new CANNON.Vec3(halfT, size.y * 0.5, size.z * 0.5), new THREE.Vector3(combinedBox.min.x - halfT, center.y, center.z));
-        addWallBox(new CANNON.Vec3(halfT, size.y * 0.5, size.z * 0.5), new THREE.Vector3(combinedBox.max.x + halfT, center.y, center.z));
-        addWallBox(new CANNON.Vec3(size.x * 0.5, size.y * 0.5, halfT), new THREE.Vector3(center.x, center.y, combinedBox.min.z - halfT));
-        addWallBox(new CANNON.Vec3(size.x * 0.5, size.y * 0.5, halfT), new THREE.Vector3(center.x, center.y, combinedBox.max.z + halfT));
-      }
-    }
-
-    const floorBody = new CANNON.Body({ mass: 0, shape: new CANNON.Plane(), material: this.materials.materials.floor });
-    floorBody.position.copy(state.origin);
-    floorBody.quaternion.setFromAxisAngle(new CANNON.Vec3(1, 0, 0), -Math.PI * 0.5);
-    this.physicsWorld.addBody(floorBody);
-    state.physicsBodies.push(floorBody);
-
-    const portal = new Portal(this, new THREE.Vector3(state.origin.x - 4.4, state.origin.y, state.origin.z - 2), null, "Portal", 0xffff00, {
-      size: new THREE.Vector3(2, 2.5, 2),
-      interactionRadius: 1,
-      options: [{ label: "Go to Stage Area", destinationKey: "StageDesign" }],
-    });
-    state.portals.push(portal);
-
-    return {
-      update: () => {
-        state.portals.forEach((p) => p.update());
-        // Camera clamping
-        const bounds = state.cameraBounds;
-        const camera = this.experience.camera;
-        if (bounds && camera?.instance && camera.controls) {
-          const pos = camera.instance.position;
-          const target = camera.controls.target;
-          const m = 0.05;
-          pos.x = Math.max(bounds.minX + m, Math.min(bounds.maxX - m, pos.x));
-          pos.z = Math.max(bounds.minZ + m, Math.min(bounds.maxZ - m, pos.z));
-          pos.y = Math.min(5.2, pos.y);
-          if(target) {
-            target.x = Math.max(bounds.minX + m, Math.min(bounds.maxX - m, target.x));
-            target.z = Math.max(bounds.minZ + m, Math.min(bounds.maxZ - m, target.z));
-            target.y = Math.min(5.2, target.y);
-          }
-          camera.controls.maxDistance = 15;
-        }
-      },
-      cleanup: () => { this.experience.camera.controls.maxDistance = 15; },
-    };
+    return buildRoomImpl.call(this, state);
   }
 
   buildStageDesign(state) {
-    const resource = this.resources.items.stageModel;
-    if (resource?.scene) {
-      const model = resource.scene;
-      model.position.copy(state.origin);
-      state.group.add(model);
-      model.traverse((child) => { if (child.isMesh) { child.castShadow = true; child.receiveShadow = true; }});
-    }
-
-    const floorBody = new CANNON.Body({ mass: 0, shape: new CANNON.Plane(), material: this.materials.materials.floor });
-    floorBody.position.copy(state.origin);
-    floorBody.quaternion.setFromAxisAngle(new CANNON.Vec3(1, 0, 0), -Math.PI * 0.5);
-    this.physicsWorld.addBody(floorBody);
-    state.physicsBodies.push(floorBody);
-
-    const portalPos = new THREE.Vector3(state.origin.x + 5, state.origin.y, state.origin.z - 5);
-    state.portals.push(new Portal(this, portalPos, null, "Portal", 0xffff00, {
-      size: new THREE.Vector3(2, 2.5, 2),
-      interactionRadius: 1,
-      options: [{ label: "Go to Empty Stage", destinationKey: "BlankStage" }],
-    }));
-    
-    const pl = new THREE.PointLight(0xffff00, 1, 10);
-    pl.position.copy(portalPos).add(new THREE.Vector3(0,2,0));
-    state.group.add(pl);
-
-    return { update: () => state.portals.forEach((p) => p.update()) };
+    return buildStageDesignImpl.call(this, state);
   }
 
   buildBlankStage(state) {
-    const floorGeometry = new THREE.PlaneGeometry(state.size.width, state.size.depth);
-    const floorMaterial = new THREE.MeshStandardMaterial({ color: 0x888888 });
-    const floorMesh = new THREE.Mesh(floorGeometry, floorMaterial);
-    floorMesh.rotation.x = -Math.PI * 0.5;
-    floorMesh.receiveShadow = true;
-    floorMesh.position.copy(state.origin);
-    state.group.add(floorMesh);
-
-    const floorBody = new CANNON.Body({ mass: 0, shape: new CANNON.Plane(), material: this.materials.materials.floor });
-    floorBody.position.copy(state.origin);
-    floorBody.quaternion.setFromAxisAngle(new CANNON.Vec3(1, 0, 0), -Math.PI * 0.5);
-    this.physicsWorld.addBody(floorBody);
-    state.physicsBodies.push(floorBody);
-
-    state.portals.push(new Portal(this, new THREE.Vector3(state.origin.x, state.origin.y, state.origin.z + 5), null, "Portal", 0xff0000, {
-      size: new THREE.Vector3(2, 2.5, 2),
-      interactionRadius: 1,
-      options: [{ label: "Go to Stage Area", destinationKey: "StageDesign" }],
-    }));
-    state.disposables.push(floorGeometry, floorMaterial);
-    return { update: () => state.portals.forEach((p) => p.update()) };
+    return buildBlankStageImpl.call(this, state);
   }
 
   buildStore(state) {
-    const resource = this.resources.items.storeModel;
-    if (resource?.scene) {
-      const model = resource.scene;
-      model.scale.set(1, 1, 1);
-      model.position.copy(state.origin);
-      state.group.add(model);
-    }
-
-    // Notice marker (3D exclamation mark) to locate the game starter warp
-    const noticeResource = this.resources.items.noticeModel;
-    if (noticeResource?.scene) {
-      const notice = noticeResource.scene.clone();
-      notice.position.set(state.origin.x + -12, state.origin.y + 2.5, state.origin.z + 7.2);
-      notice.rotation.y = Math.PI * 0.5;
-      notice.traverse((child) => {
-        if (child.isMesh) {
-          child.castShadow = true;
-          child.receiveShadow = true;
-        }
-      });
-      state.group.add(notice);
-    }
-
-    // --- GAME STARTER GATE ---
-    // This gate starts the real game run (Academy level 1).
-    // Location: x=-12, z=7.25
-    const gameGatePosition = new THREE.Vector3(
-      state.origin.x - 12,
-      state.origin.y,
-      state.origin.z + 7.25
-    );
-
-    state.portals.push(
-      new Portal(this, gameGatePosition, null, "Warp Gate", 0xffffff, {
-        size: new THREE.Vector3(2, 2.5, 2),
-        interactionRadius: 2,
-        options: [
-          {
-            label: "Start Game",
-            onSelect: () => this.startRun(),
-          },
-        ],
-      })
-    );
-
-    // --- STORE -> LOBBY WARP ---
-    // Moved previous travel options here.
-    // Location: x=15, z=16
-    const lobbyWarpPosition = new THREE.Vector3(
-      state.origin.x + 15,
-      state.origin.y,
-      state.origin.z + 16
-    );
-
-    state.portals.push(
-      new Portal(this, lobbyWarpPosition, null, "Travel Gate", 0xffffff, {
-        size: new THREE.Vector3(2, 2.5, 2),
-        interactionRadius: 2,
-        options: [
-          {
-            label: "Go to Room",
-            onSelect: () =>
-              this.loadLocation("Room", {
-                spawnOffset: new THREE.Vector3(2.5, 0, 2.5),
-              }),
-          },
-        ],
-      })
-    );
-
-    const floorBody = new CANNON.Body({ mass: 0, shape: new CANNON.Plane(), material: this.materials.materials.floor });
-    floorBody.position.copy(state.origin);
-    floorBody.quaternion.setFromAxisAngle(new CANNON.Vec3(1, 0, 0), -Math.PI * 0.5);
-    this.physicsWorld.addBody(floorBody);
-    state.physicsBodies.push(floorBody);
-
-    return { update: () => state.portals.forEach((p) => p.update()) };
+    return buildStoreImpl.call(this, state);
   }
 
   buildForest(state) {
-    const al = new THREE.AmbientLight('#ffffff', 0.8);
-    state.group.add(al); state.disposables.push(al);
-    const sl = new THREE.DirectionalLight('#ffffff', 2);
-    sl.position.set(10, 30, 10); sl.castShadow = true;
-    state.group.add(sl); state.disposables.push(sl);
-
-    const resource = this.resources.items.forestModel;
-    if (resource?.scene) {
-      const model = resource.scene.clone();
-      model.position.copy(state.origin);
-      state.group.add(model);
-      model.traverse((child) => {
-        if (child.isMesh) {
-          child.castShadow = true; child.receiveShadow = true;
-          // Fix unsupported textures to prevent warnings/black rendering
-          if(child.material) {
-             child.material.metalnessMap = null;
-             child.material.roughnessMap = null;
-             child.material.normalMap = null;
-             child.material.needsUpdate = true;
-          }
-        }
-      });
-      this.createPhysicsBodiesFromColliders(model, state, { material: this.materials.materials.floor });
-    }
-
-    const floorBody = new CANNON.Body({ mass: 0, shape: new CANNON.Plane(), material: this.materials.materials.floor });
-    floorBody.position.copy(state.origin);
-    floorBody.quaternion.setFromAxisAngle(new CANNON.Vec3(1, 0, 0), -Math.PI * 0.5);
-    this.physicsWorld.addBody(floorBody);
-    state.physicsBodies.push(floorBody);
-
-    state.portals.push(new Portal(this, new THREE.Vector3(state.origin.x, state.origin.y, state.origin.z + 5), null, "Exit Forest", 0x228822, {
-      size: new THREE.Vector3(2, 3, 2),
-      interactionRadius: 2,
-      options: [{ label: "Return to Store", onSelect: () => this.loadLocation("Store", { spawnOffset: new THREE.Vector3(-10, 0, 10) }) }]
-    }));
-
-    return { update: () => state.portals.forEach((p) => p.update()) };
+    return buildForestImpl.call(this, state);
   }
 
   buildAcademy(state) {
-    // Sky inside Academy (use existing store sky texture)
-    const skyTex = this.resources.items.storeSky;
-    if (skyTex) {
-      if ("colorSpace" in skyTex) skyTex.colorSpace = THREE.SRGBColorSpace;
-      else skyTex.encoding = THREE.sRGBEncoding;
-
-      const skyGeo = new THREE.SphereGeometry(120, 48, 24);
-      const skyMat = new THREE.MeshBasicMaterial({ map: skyTex, side: THREE.BackSide, depthWrite: false });
-      const skyDome = new THREE.Mesh(skyGeo, skyMat);
-      skyDome.name = "academy-sky-dome";
-      skyDome.position.copy(state.origin);
-      skyDome.position.y += 20;
-      state.group.add(skyDome);
-      state.disposables.push(skyGeo, skyMat);
-    }
-
-    const resource = this.resources.items.academyModel;
-    if (resource?.scene) {
-      const model = resource.scene.clone();
-      model.position.copy(state.origin);
-      state.group.add(model);
-
-      model.traverse((child) => {
-        if (child.isMesh) {
-          child.castShadow = true;
-          child.receiveShadow = true;
-        }
-      });
-
-      this.createPhysicsBodiesFromColliders(model, state, {
-        material: this.materials.materials.floor,
-      });
-    }
-
-    const floorBody = new CANNON.Body({
-      mass: 0,
-      shape: new CANNON.Plane(),
-      material: this.materials.materials.floor,
-    });
-    floorBody.position.copy(state.origin);
-    floorBody.quaternion.setFromAxisAngle(
-      new CANNON.Vec3(1, 0, 0),
-      -Math.PI * 0.5
-    );
-    this.physicsWorld.addBody(floorBody);
-    state.physicsBodies.push(floorBody);
-
-    return { update: () => state.portals.forEach((p) => p.update()) };
+    return buildAcademyImpl.call(this, state);
   }
 
   // ==========================================
