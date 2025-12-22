@@ -12,6 +12,15 @@ export default class GameManager {
     this.currentLevelNumber = 0;
 
     this.kills = 0;
+
+    // UI Elements
+    this.ui = {
+        container: document.getElementById('game-ui'),
+        hpFill: document.getElementById('hud-hp-fill'),
+        hpText: document.getElementById('hud-hp-text'),
+        atk: document.getElementById('hud-stat-atk'),
+        def: document.getElementById('hud-stat-def'),
+    }
   }
 
   start(options = {}) {
@@ -22,6 +31,8 @@ export default class GameManager {
     this.kills = 0;
 
     this.ensureTimerUI();
+    if (this.ui.container) this.ui.container.style.display = 'block';
+
     this.setLevelOrderFromWorld();
     this.setLevel(startLevelKey);
 
@@ -55,6 +66,8 @@ export default class GameManager {
       this.timerEl.parentElement.removeChild(this.timerEl);
     }
     this.timerEl = null;
+
+    if (this.ui.container) this.ui.container.style.display = 'none';
   }
 
   update(deltaMs) {
@@ -64,6 +77,40 @@ export default class GameManager {
     this.elapsedMs += Math.max(0, d);
 
     if (this.timerEl) this.timerEl.textContent = this.formatElapsed(this.elapsedMs);
+
+    this.updateHUD();
+  }
+
+  updateHUD() {
+      const player = this.experience?.world?.player;
+      if (!player) return;
+
+      // Update HP
+      if (this.ui.hpFill && this.ui.hpText) {
+          const hp = Math.max(0, player.hp);
+          const maxHp = player.baseHp || 100;
+          const pct = Math.min(100, (hp / maxHp) * 100);
+          
+          this.ui.hpFill.style.width = `${pct}%`;
+          this.ui.hpText.textContent = `${Math.ceil(hp)}/${maxHp}`;
+      }
+
+      // Update Stats
+      if (this.ui.atk) this.ui.atk.textContent = `ATK: ${player.attack}`;
+      if (this.ui.def) this.ui.def.textContent = `DEF: ${player.defense}`;
+  }
+
+  // Dev testing: Empty event case for weapon switching
+  switchWeapon(slotIndex) {
+      // TODO: Implement weapon switching logic
+      console.log(`GameManager: Switch to weapon slot ${slotIndex}`);
+      
+      // Visual update for dev testing
+      const slots = document.querySelectorAll('.hud-weapon-slot');
+      slots.forEach(s => s.classList.remove('active'));
+      
+      const target = document.querySelector(`.hud-weapon-slot.slot-${slotIndex}`);
+      if (target) target.classList.add('active');
   }
 
   ensureTimerUI() {

@@ -241,6 +241,11 @@ export default class Camera {
         this.instance.lookAt(target)
     }
 
+    setRotation(yaw, pitch) {
+        if (yaw !== undefined) this.look.yaw = yaw
+        if (pitch !== undefined) this.look.pitch = Math.max(this.look.minPitch, Math.min(this.look.maxPitch, pitch))
+    }
+
     _rebuildCollisionMeshes() {
         const out = []
         const ignoreRoots = new Set()

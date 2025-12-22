@@ -479,7 +479,7 @@ export default class World {
       Academy: {
         key: "Academy",
         origin: new THREE.Vector3(0, 0, 0),
-        spawnOffset: new THREE.Vector3(0, 0, 5),
+        spawnOffset: new THREE.Vector3(40, 0, 0),
         size: { width: 80, depth: 80 },
         background: "#101015",
         backgroundTextureKey: "storeSky",
@@ -570,6 +570,21 @@ export default class World {
     const target = new CANNON.Vec3(origin.x + ox, origin.y + 2 + oy, origin.z + oz);
     this.player.body.position.copy(target);
     this.player.mesh.position.copy(target);
+
+    // Face origin
+    const dx = origin.x - target.x;
+    const dz = origin.z - target.z;
+    const angle = Math.atan2(dx, dz);
+
+    // Set player rotation
+    const q = new THREE.Quaternion();
+    q.setFromAxisAngle(new THREE.Vector3(0, 1, 0), angle);
+    this.player.mesh.quaternion.copy(q);
+
+    // Set camera rotation (behind player)
+    if (this.experience.camera) {
+        this.experience.camera.setRotation(angle + Math.PI);
+    }
   }
 
   buildLocation(config) {

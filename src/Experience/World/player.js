@@ -27,8 +27,10 @@ export default class Player {
         // --- GAME STATS (for future mechanics) ---
         this.baseHp = 100
         this.baseAttack = 1
+        this.baseDefense = 0
         this.hp = this.baseHp
         this.attack = this.baseAttack
+        this.defense = this.baseDefense
 
         // Physics configuration (capsule)
         this.physicsConfig = {
@@ -62,6 +64,7 @@ export default class Player {
     resetStatsForNewGame() {
         this.hp = this.baseHp
         this.attack = this.baseAttack
+        this.defense = this.baseDefense
     }
 
     setupDebug() {

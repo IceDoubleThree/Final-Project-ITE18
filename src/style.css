@@ -75,13 +75,23 @@ body
     font-weight: 800;
     letter-spacing: 1px;
     line-height: 1;
+    margin-bottom: 10px;
+}
+
+.loading-warning {
+    color: #ff4444;
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+    opacity: 0.9;
 }
 
 .loading-status {
     position: fixed;
     left: 0;
     right: 0;
-    bottom: 18px;
+    bottom: 40px;
     text-align: center;
     font-size: 13px;
     color: rgba(255, 255, 255, 0.75);
@@ -552,4 +562,146 @@ body
 
 .menu-button.warning:hover {
     background: #b71c1c;
+}
+/* --- Game HUD --- */
+.game-ui {
+    position: fixed;
+    inset: 0;
+    pointer-events: none; /* Let clicks pass through to canvas */
+    z-index: 2000; /* Above canvas, below menus */
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+}
+
+/* Top Left: Stats */
+.hud-stats-container {
+    position: absolute;
+    top: 20px;
+    left: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.hud-hp-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.hud-hp-label {
+    font-weight: 800;
+    font-size: 18px;
+    color: #fff;
+    text-shadow: 1px 1px 2px rgba(0,0,0,0.8);
+}
+
+.hud-hp-bar-bg {
+    width: 200px;
+    height: 16px;
+    background: rgba(0, 0, 0, 0.6);
+    border: 2px solid rgba(255, 255, 255, 0.2);
+    border-radius: 4px;
+    overflow: hidden;
+    position: relative;
+}
+
+.hud-hp-fill {
+    height: 100%;
+    background: linear-gradient(90deg, #ff3333, #ff6666);
+    width: 100%;
+    transition: width 0.2s ease-out;
+}
+
+.hud-hp-text {
+    font-size: 14px;
+    color: #fff;
+    font-weight: 600;
+    text-shadow: 1px 1px 2px rgba(0,0,0,0.8);
+    min-width: 60px;
+}
+
+.hud-stats-summary {
+    display: flex;
+    gap: 10px;
+    font-size: 14px;
+    color: rgba(255, 255, 255, 0.9);
+    font-weight: 600;
+    text-shadow: 1px 1px 2px rgba(0,0,0,0.8);
+    padding-left: 34px; /* Align with bar start */
+}
+
+.hud-stat-divider {
+    color: rgba(255, 255, 255, 0.4);
+}
+
+/* Bottom Left: Weapon Selector */
+.hud-weapon-container {
+    position: absolute;
+    bottom: 20px;
+    left: 20px;
+    display: flex;
+    flex-direction: column-reverse; /* Stack bottom-up */
+    gap: 8px;
+    align-items: flex-start;
+}
+
+.hud-weapon-slot {
+    background: rgba(30, 30, 30, 0.8);
+    border: 2px solid rgba(255, 255, 255, 0.1);
+    border-radius: 4px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    position: relative;
+    transition: all 0.2s ease;
+}
+
+.hud-weapon-slot.active {
+    border-color: rgba(255, 255, 255, 0.8);
+    background: rgba(50, 50, 50, 0.9);
+    box-shadow: 0 0 10px rgba(255, 255, 255, 0.1);
+}
+
+/* Slot 1 (Main) - Largest */
+.hud-weapon-slot.slot-1 {
+    width: 64px;
+    height: 64px;
+}
+
+/* Slot 2 - Medium */
+.hud-weapon-slot.slot-2 {
+    width: 48px;
+    height: 48px;
+    opacity: 0.7;
+    margin-left: 8px; /* Slight offset for visual hierarchy */
+}
+
+/* Slot 3 - Smallest */
+.hud-weapon-slot.slot-3 {
+    width: 40px;
+    height: 40px;
+    opacity: 0.5;
+    margin-left: 12px;
+}
+
+.hud-weapon-icon-placeholder {
+    width: 60%;
+    height: 60%;
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 2px;
+}
+
+.hud-weapon-key {
+    position: absolute;
+    bottom: 2px;
+    right: 4px;
+    font-size: 10px;
+    color: rgba(255, 255, 255, 0.5);
+    font-weight: 700;
+}
+
+.hud-weapon-slot.slot-1 .hud-weapon-key {
+    font-size: 12px;
+    bottom: 4px;
+    right: 6px;
 }

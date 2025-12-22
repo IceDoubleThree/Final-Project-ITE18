@@ -13,6 +13,7 @@
     <div id="loading-screen" class="loading-screen">
         <div class="loading-center">
             <div class="loading-title">Loading</div>
+            <div class="loading-warning">...</div>
             <div class="loading-bar" aria-label="Loading progress">
                 <div id="loading-bar-fill" class="loading-bar-fill" style="width: 0%"></div>
             </div>
@@ -88,6 +89,44 @@
                     </div>
                 </div>
                 <button id="btn-pause-back" class="menu-button">Back</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- NEW: Game HUD (Heads Up Display) -->
+    <div id="game-ui" class="game-ui" style="display: none;">
+        <!-- Top Left: HP & Stats -->
+        <div class="hud-stats-container">
+            <div class="hud-hp-row">
+                <div class="hud-hp-label">HP</div>
+                <div class="hud-hp-bar-bg">
+                    <div id="hud-hp-fill" class="hud-hp-fill" style="width: 100%;"></div>
+                </div>
+                <div id="hud-hp-text" class="hud-hp-text">100/100</div>
+            </div>
+            <div class="hud-stats-summary">
+                <span id="hud-stat-atk">ATK: 0</span>
+                <span class="hud-stat-divider">|</span>
+                <span id="hud-stat-def">DEF: 0</span>
+            </div>
+        </div>
+
+        <!-- Bottom Left: Weapon Selector -->
+        <div class="hud-weapon-container">
+            <!-- Weapon 3 (Top, Smallest) -->
+            <div class="hud-weapon-slot slot-3">
+                <div class="hud-weapon-icon-placeholder"></div>
+                <div class="hud-weapon-key">3</div>
+            </div>
+            <!-- Weapon 2 (Middle, Small) -->
+            <div class="hud-weapon-slot slot-2">
+                <div class="hud-weapon-icon-placeholder"></div>
+                <div class="hud-weapon-key">2</div>
+            </div>
+            <!-- Weapon 1 (Bottom, Largest/Main) -->
+            <div class="hud-weapon-slot slot-1 active">
+                <div class="hud-weapon-icon-placeholder"></div>
+                <div class="hud-weapon-key">1</div>
             </div>
         </div>
     </div>
