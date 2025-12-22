@@ -62,7 +62,28 @@ export default class Camera {
             offset: 0, // Current offset value
             targetOffset: 0, // Target offset value (0 or 1)
             defaultDistance: 8,
-            aimDistance: 3.2
+            // Aim should not pan the camera; it should only zoom.
+            // Keep distance the same and use FOV to zoom toward the crosshair.
+            aimDistance: 8,
+
+            defaultFov: 35,
+            // Less zoom-in while aiming
+            aimFov: 30,
+            fov: 35,
+            targetFov: 35,
+
+            // Smoothly blend from shoulder cam -> centered cam when aiming
+            blend: 0,
+            targetBlend: 0,
+
+            // First-person aim
+            firstPerson: true,
+            headHeight: 2.2,
+            forwardNudge: 0.05,
+
+            // Smooth approach into first-person
+            approachLerp: 0.18,
+            hideWhenCloserThan: 0.9,
         }
 
         // Weapon state (used to enable/disable over-the-shoulder offsets)
@@ -79,7 +100,7 @@ export default class Camera {
 
     setInstance() {
         this.instance = new THREE.PerspectiveCamera(
-            35,
+            this.aim.defaultFov,
             this.sizes.width / this.sizes.height,
             // Smaller near plane reduces close-up clipping (prevents player vanishing when camera is forced close)
             0.005,
@@ -172,7 +193,14 @@ export default class Camera {
 
     setAimMode(isActive) {
         this.aim.active = isActive
-        this.aim.targetOffset = isActive ? 2.2 : 0 // Offset to the right (aim shoulder)
+        // Do NOT pan the camera when aiming. Keep offsets neutral.
+        this.aim.targetOffset = 0
+
+        // Zoom in toward the crosshair.
+        this.aim.targetFov = isActive ? this.aim.aimFov : this.aim.defaultFov
+
+        // Smoothly blend offsets out/in.
+        this.aim.targetBlend = isActive ? 1 : 0
     }
 
     setWeaponActive(isActive) {
@@ -185,6 +213,8 @@ export default class Camera {
         if (!this.weapon.active) {
             this.aim.active = false
             this.aim.targetOffset = 0
+            this.aim.targetFov = this.aim.defaultFov
+            this.aim.targetBlend = 0
         }
     }
 
@@ -198,10 +228,21 @@ export default class Camera {
         // Lerp weapon shoulder offset (prevents snapping between camera setups)
         this.weapon.offset += (this.weapon.targetOffset - this.weapon.offset) * 0.12
 
-        const baseShoulderOffset = 1.25 * this.weapon.offset
+        // Lerp aim blend (prevents snapping to centered view)
+        this.aim.blend += (this.aim.targetBlend - this.aim.blend) * 0.12
+
+        // Blend shoulder offset out while aiming (no sudden crosshair shift).
+        const baseShoulderOffset = (1.25 * this.weapon.offset) * (1 - this.aim.blend)
 
         // Lerp aim offset
         this.aim.offset += (this.aim.targetOffset - this.aim.offset) * 0.1
+
+        // Smooth FOV zoom (aiming zooms toward crosshair)
+        this.aim.fov += (this.aim.targetFov - this.aim.fov) * 0.12
+        if (Number.isFinite(this.aim.fov) && this.instance.fov !== this.aim.fov) {
+            this.instance.fov = this.aim.fov
+            this.instance.updateProjectionMatrix()
+        }
         
         // Lerp distance (base distance * user zoom multiplier)
         const baseDist = this.aim.active ? this.aim.aimDistance : this.aim.defaultDistance
@@ -226,13 +267,43 @@ export default class Camera {
         // Follow target: player position + head offset
         const target = this.controls.target
         target.copy(playerMesh.position)
-        target.y += 2.2
+        target.y += this.aim.headHeight
+
+        // First-person aim: hide the player and move the camera to the player's head.
+        // Camera view:
+        // [ [player Here] === crosshair ]
+        if (this.aim.active && this.aim.firstPerson) {
+            const cosPitch = Math.cos(this.look.pitch)
+            // Note: in this camera system, the orbit offset uses (sin(yaw), cos(yaw)).
+            // The forward/look direction is the inverse of that offset.
+            const forward = new THREE.Vector3(
+                -Math.sin(this.look.yaw) * cosPitch,
+                -Math.sin(this.look.pitch),
+                -Math.cos(this.look.yaw) * cosPitch
+            ).normalize()
+
+            const targetPos = new THREE.Vector3().copy(target).addScaledVector(forward, this.aim.forwardNudge)
+
+            // Move camera toward the player first (smooth), then hide the model when close.
+            const t = this.aim.approachLerp
+            this.instance.position.lerp(targetPos, t)
+
+            const distToTarget = this.instance.position.distanceTo(targetPos)
+            playerMesh.visible = distToTarget > this.aim.hideWhenCloserThan
+
+            this.instance.lookAt(new THREE.Vector3().copy(this.instance.position).add(forward))
+            return
+        }
+
+        // Third-person: ensure player is visible
+        playerMesh.visible = true
 
         // Shift the look target slightly to the right as well (over-the-shoulder).
         // This moves the player a bit off-center so the crosshair has a clear view.
         const cosYaw = Math.cos(this.look.yaw)
         const sinYaw = Math.sin(this.look.yaw)
-        const targetRightOffset = (2 * this.weapon.offset) + (this.aim.offset * 0.45)
+        // Blend look target offset out while aiming (keeps player aligned with crosshair).
+        const targetRightOffset = ((2 * this.weapon.offset) + (this.aim.offset * 0.45)) * (1 - this.aim.blend)
         target.x += cosYaw * targetRightOffset
         target.z += -sinYaw * targetRightOffset
 

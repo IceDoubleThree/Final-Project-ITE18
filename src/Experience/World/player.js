@@ -40,14 +40,25 @@ export default class Player {
 
         // --- WEAPON SYSTEM ---
         this.weapons = {
-            pistol: new Weapon('Pistol', { damage: 20, range: 50, fireRate: 0.5 })
+            pistol: new Weapon('Pistol', {
+                damage: 20,
+                range: 50,
+                cooldown: 0.5,
+                ammo_size: 20,
+                reloading_time: 5
+            })
         }
         this.currentWeapon = null
         this.isAiming = false
         this.pistolMesh = null
 
+        // HUD elements
+        this.hudAmmoEl = document.getElementById('hud-ammo')
+        this.hudReloadingEl = document.getElementById('hud-reloading')
+
         // Shooting / animation state
         this._wasShooting = false
+        this._isShootingHeld = false
         this._oneShotGunAimActive = false
 
         // One-shot gun_aim timing (left click)
@@ -133,9 +144,34 @@ export default class Player {
     }
 
     shoot() {
-        if (this.currentWeapon.shoot(this.time.elapsed)) {
-            // Play shoot animation or sound here
-            // For now just log
+        if (!this.currentWeapon) return false
+        return this.currentWeapon.requestFire(this.time.elapsed)
+    }
+
+    updateWeaponHud() {
+        if (!this.hudAmmoEl && !this.hudReloadingEl) return
+
+        if (!this.currentWeapon) {
+            if (this.hudAmmoEl) this.hudAmmoEl.style.display = 'none'
+            if (this.hudReloadingEl) this.hudReloadingEl.style.display = 'none'
+            return
+        }
+
+        // Ammo text
+        if (this.hudAmmoEl) {
+            const ammoSize = Number.isFinite(this.currentWeapon.ammoSize) ? this.currentWeapon.ammoSize : null
+            const ammo = Number.isFinite(this.currentWeapon.ammo) ? this.currentWeapon.ammo : null
+            if (ammoSize === null || ammoSize === Infinity) {
+                this.hudAmmoEl.textContent = '∞'
+            } else {
+                this.hudAmmoEl.textContent = `${ammo ?? 0}/${ammoSize}`
+            }
+            this.hudAmmoEl.style.display = 'block'
+        }
+
+        // Reloading indicator
+        if (this.hudReloadingEl) {
+            this.hudReloadingEl.style.display = this.currentWeapon.isReloading ? 'block' : 'none'
         }
     }
 
@@ -360,7 +396,8 @@ export default class Player {
             }
 
             const isLowerBodyBone = (boneName = '') => {
-                return /pelvis|hip|thigh|calf|shin|knee|ankle|foot|toe|leg/i.test(boneName)
+                // Include common "skirt" / cloth helper bones so legs-only clips still drive them.
+                return /pelvis|hip|thigh|calf|shin|knee|ankle|foot|toe|leg|skirt|dress|cloth|apron|cape/i.test(boneName)
             }
 
             const makeFilteredClip = (clip, trackPredicate, newNameSuffix) => {
@@ -695,6 +732,9 @@ export default class Player {
 
         // --- WEAPON INPUT ---
         if (this.currentWeapon) {
+            // Process weapon timers (reload completion + buffered shots)
+            this.currentWeapon.update(nowMs)
+
             // Right click ONLY: aim mode (camera zoom/offset + reduced movement speed)
             if (this.input.keys.aim !== this.isAiming) {
                 this.setAiming(this.input.keys.aim)
@@ -703,6 +743,20 @@ export default class Player {
             // Left click: shoot WITHOUT entering aim mode.
             const isShooting = !!this.input.keys.shoot
             const shootStarted = isShooting && !this._wasShooting
+            this._isShootingHeld = isShooting
+
+            // While holding shoot (single-fire auto), keep gun_aim overlay active
+            // so it doesn't fade out between shots or during reload/cooldown.
+            if (isShooting && !this.isAiming) {
+                const overlayClipLower = this.overlayAction?.getClip?.()?.name?.toLowerCase?.() ?? ''
+                const overlayIsGunAim = overlayClipLower.includes('gun_aim') || overlayClipLower.includes('aim_gun')
+                if (!overlayIsGunAim) {
+                    this.playOverlayAnimation('gun_aim', { timeScale: 1 })
+                } else if (this.overlayAction) {
+                    // Normalize to steady speed while holding.
+                    this.overlayAction.timeScale = 1
+                }
+            }
 
             // Play gun_aim fully once on shoot start (do not cancel early)
             if (shootStarted && !this.isAiming) {
@@ -712,20 +766,27 @@ export default class Player {
                 this.playOverlayAnimation('gun_aim', { timeScale: this._gunAimOneShotTimeScale })
             }
 
-            // Continuous shooting while held (Weapon.fireRate handles pacing)
-            if (isShooting) {
-                this.shoot()
+            // Firing rules:
+            // - Rapid clicking is buffered (press queues a shot during cooldown)
+            // - Holding fires every cooldown WITHOUT buffering (prevents accidental extra shot on a slow click)
+            if (shootStarted) {
+                this.shoot() // buffered requestFire
+            } else if (isShooting) {
+                this.currentWeapon.tryFireHeld(nowMs)
             }
 
             this._wasShooting = isShooting
         } else {
             this._wasShooting = false
+            this._isShootingHeld = false
             this._oneShotGunAimActive = false
             this._gunAimHoldUntilMs = 0
             if (this.isAiming) this.setAiming(false)
             this.stopOverlayAnimation()
             this.stopOverlaySupportAnimation()
         }
+
+        this.updateWeaponHud()
 
         // --- NEW: Stop movement if Dialogue is open ---
         if (this.experience.dialogue.isActive()) {
@@ -755,6 +816,8 @@ export default class Player {
         const isMoving = inputX !== 0 || inputZ !== 0
         const isRunning = isMoving && this.input.keys.shift
 
+        const shouldFaceCameraWhileShooting = !!this.currentWeapon && this._isShootingHeld
+
         if (this.isAiming) {
             // Rotate player to face camera direction
             const camera = this.experience.camera.instance
@@ -771,6 +834,28 @@ export default class Player {
                 const targetRotation = cameraAngle + inputAngle
                 const speed = 2 // Reduced speed when aiming
                 
+                this.body.velocity.x = Math.sin(targetRotation) * speed
+                this.body.velocity.z = Math.cos(targetRotation) * speed
+            } else {
+                this.body.velocity.x = 0
+                this.body.velocity.z = 0
+            }
+        } else if (shouldFaceCameraWhileShooting) {
+            // While shooting (left click hold), face where the camera looks.
+            const camera = this.experience.camera.instance
+            const cameraDirection = new THREE.Vector3()
+            camera.getWorldDirection(cameraDirection)
+            const cameraAngle = Math.atan2(cameraDirection.x, cameraDirection.z)
+
+            const targetQuaternion = new THREE.Quaternion()
+            targetQuaternion.setFromAxisAngle(new THREE.Vector3(0, 1, 0), cameraAngle)
+            this.mesh.quaternion.slerp(targetQuaternion, 0.2)
+
+            if (isMoving) {
+                const inputAngle = Math.atan2(inputX, inputZ)
+                const targetRotation = cameraAngle + inputAngle
+
+                const speed = isRunning ? 10 : 3
                 this.body.velocity.x = Math.sin(targetRotation) * speed
                 this.body.velocity.z = Math.cos(targetRotation) * speed
             } else {
@@ -802,7 +887,7 @@ export default class Player {
         // - While aiming or during a one-shot gun_aim, keep gun overlay active.
         // - While gun overlay is active and the player moves, play walking_legs alongside it.
         const isHoldingGunAimPose = nowMs < (this._gunAimHoldUntilMs || 0)
-        const isGunOverlayActive = this.isAiming || this._oneShotGunAimActive || isHoldingGunAimPose
+        const isGunOverlayActive = this.isAiming || this._isShootingHeld || this._oneShotGunAimActive || isHoldingGunAimPose
 
         // Keep idle_upper running while gun overlay is active OR while the gun overlay is still blending out.
         // This helps the pose return smoothly instead of feeling "stuck".
