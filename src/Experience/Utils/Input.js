@@ -12,7 +12,9 @@ export default class Input extends EventEmitter {
             right: false,
             jump: false,
             shift: false,
-            interact: false // New key
+            interact: false, // New key
+            shoot: false,
+            aim: false
         }
 
         // Listen to DOM events
@@ -23,6 +25,41 @@ export default class Input extends EventEmitter {
         window.addEventListener('keyup', (event) => {
             this.keyUp(event)
         })
+
+        window.addEventListener('mousedown', (event) => {
+            this.mouseDown(event)
+        })
+
+        window.addEventListener('mouseup', (event) => {
+            this.mouseUp(event)
+        })
+    }
+
+    mouseDown(event) {
+        if (document.pointerLockElement !== document.querySelector('canvas.webgl')) return
+
+        switch(event.button) {
+            case 0: // Left Click
+                this.keys.shoot = true
+                this.trigger('shoot')
+                break
+            case 2: // Right Click
+                this.keys.aim = true
+                this.trigger('aimStart')
+                break
+        }
+    }
+
+    mouseUp(event) {
+        switch(event.button) {
+            case 0: // Left Click
+                this.keys.shoot = false
+                break
+            case 2: // Right Click
+                this.keys.aim = false
+                this.trigger('aimEnd')
+                break
+        }
     }
 
     keyDown(event) {
@@ -112,12 +149,24 @@ export default class Input extends EventEmitter {
             case 'KeyF':
                 this.keys.interact = false
                 break
+            
+            case 'Digit1':
+                this.trigger('slot1')
+                break
+            case 'Digit2':
+                this.trigger('slot2')
+                break
+            case 'Digit3':
+                this.trigger('slot3')
+                break
         }
     }
     
     destroy() {
         window.removeEventListener('keydown')
         window.removeEventListener('keyup')
+        window.removeEventListener('mousedown')
+        window.removeEventListener('mouseup')
         this.off()
     }
 }

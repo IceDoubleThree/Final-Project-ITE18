@@ -1,6 +1,7 @@
 import * as THREE from 'three'
 import * as CANNON from 'cannon-es'
 import Experience from '../Experience.js'
+import Weapon from './Weapon.js'
 
 export default class Player {
     constructor(physicsWorld, materialsManager) {
@@ -23,6 +24,23 @@ export default class Player {
         this.mixer = null
         this.actions = {}
         this.currentAction = null
+
+        // --- WEAPON SYSTEM ---
+        this.weapons = {
+            pistol: new Weapon('Pistol', { damage: 20, range: 50, fireRate: 0.5 })
+        }
+        this.currentWeapon = null
+        this.isAiming = false
+        this.pistolMesh = null
+
+        // Shooting / animation state
+        this._wasShooting = false
+        this._oneShotGunAimActive = false
+
+        // One-shot gun_aim timing (left click)
+        this._gunAimHoldUntilMs = 0
+        this._gunAimOneShotTimeScale = 2
+        this._gunAimOneShotHoldMs = 1000
 
         // --- GAME STATS (for future mechanics) ---
         this.baseHp = 100
@@ -59,6 +77,53 @@ export default class Player {
             console.log('Player: Jump requested. canJump:', this.canJump)
             this.jump()
         })
+
+        // Weapon Inputs
+        this.input.on('slot1', () => this.equipWeapon('pistol'))
+        this.input.on('slot2', () => this.equipWeapon(null)) // Unequip
+        this.input.on('slot3', () => this.equipWeapon(null)) // Unequip
+    }
+
+    equipWeapon(weaponKey) {
+        if (weaponKey === 'pistol') {
+            this.currentWeapon = this.weapons.pistol
+            if (this.pistolMesh) this.pistolMesh.visible = true
+            this.experience.camera?.setWeaponActive?.(true)
+            console.log('Equipped Pistol')
+            // Update UI
+            document.querySelector('.hud-weapon-slot.slot-1').classList.add('active')
+        } else {
+            this.currentWeapon = null
+            if (this.pistolMesh) this.pistolMesh.visible = false
+            this.setAiming(false)
+            this.experience.camera?.setWeaponActive?.(false)
+            console.log('Unequipped Weapon')
+            // Update UI
+            document.querySelector('.hud-weapon-slot.slot-1').classList.remove('active')
+        }
+    }
+
+    setAiming(isAiming) {
+        if (this.isAiming === isAiming) return
+
+        this.isAiming = isAiming
+        this.experience.camera.setAimMode(isAiming)
+        
+        if (isAiming) {
+            // Aim mode uses normal-speed gun_aim (left click one-shot may override timeScale).
+            if (this.actions.gun_aim) this.actions.gun_aim.timeScale = 1
+            this.playAnimation('gun_aim')
+        } else {
+            // Return to idle or run
+            this.updateAnimation(false, false)
+        }
+    }
+
+    shoot() {
+        if (this.currentWeapon.shoot(this.time.elapsed)) {
+            // Play shoot animation or sound here
+            // For now just log
+        }
     }
 
     resetStatsForNewGame() {
@@ -153,6 +218,13 @@ export default class Player {
 
         // Enable shadow mapping for player - traverse all meshes
         this.mesh.traverse((child) => {
+            // Check for pistol
+            if (child.name.toLowerCase() === 'pistol') {
+                this.pistolMesh = child
+                child.visible = false // Hide initially
+                console.log('Found Pistol mesh, hiding it.')
+            }
+
             if (child instanceof THREE.Mesh) {
                 child.castShadow = true
                 child.receiveShadow = true // Player should also receive shadows
@@ -207,6 +279,16 @@ export default class Player {
         // Create AnimationMixer
         this.mixer = new THREE.AnimationMixer(this.mesh)
 
+        // Clear one-shot flags when an animation finishes
+        this.mixer.addEventListener('finished', (event) => {
+            const clipName = event?.action?.getClip?.()?.name?.toLowerCase?.() ?? ''
+            if (clipName === 'gun_aim') {
+                this._oneShotGunAimActive = false
+                // Keep the clamped end pose briefly before returning to locomotion.
+                this._gunAimHoldUntilMs = (this.time?.elapsed ?? 0) + this._gunAimOneShotHoldMs
+            }
+        })
+
         // Get animations from the GLTF loader result
         if (this.animations && this.animations.length > 0) {
             console.log('✅ Available animations:')
@@ -214,11 +296,46 @@ export default class Player {
                 console.log(`  - ${clip.name} (${clip.duration}s)`)
             })
 
+            // Detailed animation metadata
+            const animationTable = this.animations.map((clip) => {
+                const tracks = clip.tracks || []
+                const trackCount = tracks.length
+
+                // Estimate keyframes + fps based on the first track that has time samples
+                const timeTrack = tracks.find((t) => t && t.times && t.times.length)
+                const keyframes = timeTrack?.times?.length ?? 0
+                const duration = Number.isFinite(clip.duration) ? clip.duration : 0
+                const fps = duration > 0 ? Math.round((keyframes / duration) * 10) / 10 : 0
+
+                return {
+                    name: clip.name,
+                    duration_s: Math.round(duration * 1000) / 1000,
+                    tracks: trackCount,
+                    keyframes,
+                    approx_fps: fps,
+                    blendMode: clip.blendMode,
+                    uuid: clip.uuid,
+                }
+            })
+
+            console.groupCollapsed('🎞️ Player Animation Details')
+            console.table(animationTable)
+            console.groupEnd()
+
             // Create actions for available animations
             this.animations.forEach(clip => {
                 const action = this.mixer.clipAction(clip)
-                action.loop = THREE.LoopRepeat
-                this.actions[clip.name.toLowerCase()] = action
+                const key = clip.name.toLowerCase()
+
+                // Aim clip should play fully once and then hold final pose while aiming
+                if (key === 'gun_aim') {
+                    action.loop = THREE.LoopOnce
+                    action.clampWhenFinished = true
+                } else {
+                    action.loop = THREE.LoopRepeat
+                }
+
+                this.actions[key] = action
             })
 
             console.log('📋 Stored animation keys:', Object.keys(this.actions))
@@ -285,8 +402,7 @@ export default class Player {
             this.playAnimation('walking')
         }
 
-        // Update mixer with delta time
-        this.mixer.update(this.time.delta / 1000)
+        // Mixer update is handled once per frame in `update()` so aiming doesn't freeze.
     }
 
     setPhysics() {
@@ -325,7 +441,7 @@ export default class Player {
             console.log('Player: Jumping!')
             // --- FIX 2: Respect Bounciness ---
             // If we are already flying up (from a bounce), add to it.
-            // If we are standing still, set it to 12.
+            // If we are standing still, set it to 8.
             if (this.body.velocity.y < 8) {
                 this.body.velocity.y = 8
             } else {
@@ -340,6 +456,43 @@ export default class Player {
 
     update() {
         if (!this.input || !this.mesh) return
+
+        const nowMs = this.time?.elapsed ?? 0
+
+        // --- WEAPON INPUT ---
+        if (this.currentWeapon) {
+            // Right click ONLY: aim mode (camera zoom/offset + reduced movement speed)
+            if (this.input.keys.aim !== this.isAiming) {
+                this.setAiming(this.input.keys.aim)
+            }
+
+            // Left click: shoot WITHOUT entering aim mode.
+            const isShooting = !!this.input.keys.shoot
+            const shootStarted = isShooting && !this._wasShooting
+
+            // Play gun_aim fully once on shoot start (do not cancel early)
+            if (shootStarted && !this.isAiming) {
+                this._oneShotGunAimActive = true
+                this._gunAimHoldUntilMs = 0
+
+                if (this.actions.gun_aim) {
+                    this.actions.gun_aim.timeScale = this._gunAimOneShotTimeScale
+                }
+                this.playAnimation('gun_aim')
+            }
+
+            // Continuous shooting while held (Weapon.fireRate handles pacing)
+            if (isShooting) {
+                this.shoot()
+            }
+
+            this._wasShooting = isShooting
+        } else {
+            this._wasShooting = false
+            this._oneShotGunAimActive = false
+            this._gunAimHoldUntilMs = 0
+            if (this.isAiming) this.setAiming(false)
+        }
 
         // --- NEW: Stop movement if Dialogue is open ---
         if (this.experience.dialogue.isActive()) {
@@ -369,7 +522,29 @@ export default class Player {
         const isMoving = inputX !== 0 || inputZ !== 0
         const isRunning = isMoving && this.input.keys.shift
 
-        if (isMoving) {
+        if (this.isAiming) {
+            // Rotate player to face camera direction
+            const camera = this.experience.camera.instance
+            const cameraDirection = new THREE.Vector3()
+            camera.getWorldDirection(cameraDirection)
+            const cameraAngle = Math.atan2(cameraDirection.x, cameraDirection.z)
+            
+            const targetQuaternion = new THREE.Quaternion()
+            targetQuaternion.setFromAxisAngle(new THREE.Vector3(0, 1, 0), cameraAngle)
+            this.mesh.quaternion.slerp(targetQuaternion, 0.2)
+
+            if (isMoving) {
+                const inputAngle = Math.atan2(inputX, inputZ)
+                const targetRotation = cameraAngle + inputAngle
+                const speed = 2 // Reduced speed when aiming
+                
+                this.body.velocity.x = Math.sin(targetRotation) * speed
+                this.body.velocity.z = Math.cos(targetRotation) * speed
+            } else {
+                this.body.velocity.x = 0
+                this.body.velocity.z = 0
+            }
+        } else if (isMoving) {
             const inputAngle = Math.atan2(inputX, inputZ)
             const camera = this.experience.camera.instance
             const cameraDirection = new THREE.Vector3()
@@ -391,7 +566,17 @@ export default class Player {
         }
 
         // Update animations
-        this.updateAnimation(isMoving, isRunning)
+        // - While aiming, we let gun_aim hold pose (clamped).
+        // - While shooting (left click) we let the one-shot gun_aim finish before returning to locomotion.
+        const isHoldingGunAimPose = nowMs < (this._gunAimHoldUntilMs || 0)
+        if (!this.isAiming && !this._oneShotGunAimActive && !isHoldingGunAimPose) {
+            this.updateAnimation(isMoving, isRunning)
+        }
+
+        // Always advance animations (including while aiming)
+        if (this.mixer) {
+            this.mixer.update(this.time.delta / 1000)
+        }
 
         // Position mesh so its center matches the physics body
         this.mesh.position.copy(this.body.position)

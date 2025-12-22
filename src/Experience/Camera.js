@@ -30,6 +30,11 @@ export default class Camera {
         // Orbit distance (used by our own zoom logic)
         this.distance = 8
 
+        // User zoom (applies to both normal + aim base distances)
+        this.zoom = {
+            multiplier: 1,
+        }
+
         // Camera collision (prevents camera clipping through meshes/models)
         this.collision = {
             enabled: true,
@@ -49,6 +54,22 @@ export default class Camera {
         // Pointer lock state
         this.pointer = {
             isLocked: false,
+        }
+
+        // Aiming state
+        this.aim = {
+            active: false,
+            offset: 0, // Current offset value
+            targetOffset: 0, // Target offset value (0 or 1)
+            defaultDistance: 8,
+            aimDistance: 3.2
+        }
+
+        // Weapon state (used to enable/disable over-the-shoulder offsets)
+        this.weapon = {
+            active: false,
+            offset: 0,
+            targetOffset: 0,
         }
 
         this.setInstance()
@@ -120,7 +141,14 @@ export default class Camera {
 
             const minD = this.controls?.minDistance ?? 3
             const maxD = this.controls?.maxDistance ?? 15
-            this.distance = Math.max(minD, Math.min(maxD, this.distance * factor))
+
+            const baseDist = this.aim.active ? this.aim.aimDistance : this.aim.defaultDistance
+            if (!Number.isFinite(baseDist) || baseDist <= 0) return
+
+            const nextMultiplier = this.zoom.multiplier * factor
+            const nextTarget = baseDist * nextMultiplier
+            const clampedTarget = Math.max(minD, Math.min(maxD, nextTarget))
+            this.zoom.multiplier = clampedTarget / baseDist
         }
         window.addEventListener('wheel', this._onWheel, { passive: true })
     }
@@ -142,9 +170,45 @@ export default class Camera {
         this.instance.updateProjectionMatrix()
     }
 
+    setAimMode(isActive) {
+        this.aim.active = isActive
+        this.aim.targetOffset = isActive ? 2.2 : 0 // Offset to the right (aim shoulder)
+    }
+
+    setWeaponActive(isActive) {
+        this.weapon.active = !!isActive
+
+        // Smooth shoulder transition on equip/unequip
+        this.weapon.targetOffset = this.weapon.active ? 1 : 0
+
+        // If no weapon is active, ensure we are not aiming/offsetting.
+        if (!this.weapon.active) {
+            this.aim.active = false
+            this.aim.targetOffset = 0
+        }
+    }
+
     update() {
         const playerMesh = this.experience.world?.player?.mesh
         if (!this.modes.follow || !playerMesh) return
+
+        // Only apply over-the-shoulder offset when a gun/weapon is active.
+        const weaponActive = !!this.weapon?.active
+
+        // Lerp weapon shoulder offset (prevents snapping between camera setups)
+        this.weapon.offset += (this.weapon.targetOffset - this.weapon.offset) * 0.12
+
+        const baseShoulderOffset = 1.25 * this.weapon.offset
+
+        // Lerp aim offset
+        this.aim.offset += (this.aim.targetOffset - this.aim.offset) * 0.1
+        
+        // Lerp distance (base distance * user zoom multiplier)
+        const baseDist = this.aim.active ? this.aim.aimDistance : this.aim.defaultDistance
+        const minD = this.controls?.minDistance ?? 3
+        const maxD = this.controls?.maxDistance ?? 15
+        const targetDist = Math.max(minD, Math.min(maxD, baseDist * this.zoom.multiplier))
+        this.distance += (targetDist - this.distance) * 0.1
 
         // Compute a safe minimum camera distance from the player's current model size.
         // (If the camera gets inside the player mesh, backfaces get culled and the player appears to vanish.)
@@ -164,6 +228,14 @@ export default class Camera {
         target.copy(playerMesh.position)
         target.y += 2.2
 
+        // Shift the look target slightly to the right as well (over-the-shoulder).
+        // This moves the player a bit off-center so the crosshair has a clear view.
+        const cosYaw = Math.cos(this.look.yaw)
+        const sinYaw = Math.sin(this.look.yaw)
+        const targetRightOffset = (2 * this.weapon.offset) + (this.aim.offset * 0.45)
+        target.x += cosYaw * targetRightOffset
+        target.z += -sinYaw * targetRightOffset
+
         // Initialize yaw/pitch/distance from current camera placement once the player exists
         if (!this.look.initializedFromPlayer) {
             const offset = new THREE.Vector3().subVectors(this.instance.position, target)
@@ -171,6 +243,12 @@ export default class Camera {
             const minD = this.controls?.minDistance ?? 3
             const maxD = this.controls?.maxDistance ?? 15
             this.distance = Math.max(minD, Math.min(maxD, d))
+
+            // Sync zoom multiplier to current distance so wheel zoom doesn't snap.
+            const baseDist = this.aim.active ? this.aim.aimDistance : this.aim.defaultDistance
+            if (Number.isFinite(baseDist) && baseDist > 0) {
+                this.zoom.multiplier = this.distance / baseDist
+            }
 
             // yaw around Y axis, pitch up/down
             this.look.yaw = Math.atan2(offset.x, offset.z)
@@ -192,10 +270,20 @@ export default class Camera {
         const desiredOffsetX = Math.sin(this.look.yaw) * cosPitch * this.distance
         const desiredOffsetY = Math.sin(this.look.pitch) * this.distance
         const desiredOffsetZ = Math.cos(this.look.yaw) * cosPitch * this.distance
+        
+        // Calculate right vector for aim offset
+        // Yaw is rotation around Y. 0 is usually +Z or -Z depending on setup.
+        // We want to move camera to the right relative to view.
+        // If view is (sin(yaw), cos(yaw)), right is (sin(yaw - PI/2), cos(yaw - PI/2))
+        // Actually, let's just add to the position perpendicular to look direction.
+        const totalRightOffset = baseShoulderOffset + this.aim.offset
+        const rightX = Math.cos(this.look.yaw) * totalRightOffset
+        const rightZ = -Math.sin(this.look.yaw) * totalRightOffset
+
         const desiredPos = new THREE.Vector3(
-            target.x + desiredOffsetX,
+            target.x + desiredOffsetX + rightX,
             target.y + desiredOffsetY,
-            target.z + desiredOffsetZ
+            target.z + desiredOffsetZ + rightZ
         )
 
         // Collision clamp: raycast from target toward desiredPos
@@ -224,7 +312,19 @@ export default class Camera {
         const offsetX = Math.sin(this.look.yaw) * cosPitch * effectiveDistance
         const offsetY = Math.sin(this.look.pitch) * effectiveDistance
         const offsetZ = Math.cos(this.look.yaw) * cosPitch * effectiveDistance
-        this.instance.position.set(target.x + offsetX, target.y + offsetY, target.z + offsetZ)
+        
+        // Re-apply right offset to final position (scaled by effective distance? No, offset should be constant or scaled?)
+        // If we are close to wall, we might want to reduce offset? 
+        // For now let's keep it simple and just add it.
+        // But wait, collision logic above used desiredPos which INCLUDED the offset.
+        // So if we hit a wall, effectiveDistance is reduced.
+        // We should recalculate position with effectiveDistance AND the offset.
+        
+        this.instance.position.set(
+            target.x + offsetX + rightX, 
+            target.y + offsetY, 
+            target.z + offsetZ + rightZ
+        )
 
         // Apply per-location camera bounds clamping (if provided by World)
         const bounds = this.experience.world?.currentLocation?.cameraBounds
