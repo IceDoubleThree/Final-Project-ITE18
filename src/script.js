@@ -134,45 +134,66 @@ if (btnStart) {
 			const selectedLocation = isDebugMenu ? debugLocationSelect?.value : null
 			experience.startGame(selectedLocation)
 		}
-	}, { once: true })
+	})
 }
 
 const setPlaceholder = (text) => {
 	// Legacy placeholder support removed
 }
 
-// --- Menu Navigation ---
+// --- Main Menu Navigation ---
+const mainMenuButtons = document.getElementById('main-menu-buttons')
+const subMenuContainer = document.getElementById('sub-menu-container')
+const btnBackMain = document.getElementById('btn-back-main')
+
 const menuSections = {
-    placeholder: document.getElementById('content-placeholder'),
     settings: document.getElementById('content-settings'),
     help: document.getElementById('content-help'),
     credits: document.getElementById('content-credits')
 }
 
-const showMenuSection = (sectionName) => {
-    // Hide all
+const showSubMenu = (sectionName) => {
+    if (!mainMenuButtons || !subMenuContainer) return
+
+    // Hide main buttons
+    mainMenuButtons.style.display = 'none'
+    
+    // Show sub menu container
+    subMenuContainer.style.display = 'flex' // Reusing flex layout from class
+
+    // Hide all sections first
     Object.values(menuSections).forEach(el => {
         if(el) el.style.display = 'none'
     })
     
-    // Show target
+    // Show target section
     const target = menuSections[sectionName]
     if(target) target.style.display = 'block'
 }
 
-btnSettings?.addEventListener('click', () => showMenuSection('settings'))
-btnHelp?.addEventListener('click', () => showMenuSection('help'))
-btnCredits?.addEventListener('click', () => showMenuSection('credits'))
+const backToMainMenu = () => {
+    if (!mainMenuButtons || !subMenuContainer) return
+    
+    subMenuContainer.style.display = 'none'
+    mainMenuButtons.style.display = 'flex'
+}
 
-// --- Settings Logic ---
+btnBackMain?.addEventListener('click', backToMainMenu)
+
+btnSettings?.addEventListener('click', () => showSubMenu('settings'))
+btnHelp?.addEventListener('click', () => showSubMenu('help'))
+btnCredits?.addEventListener('click', () => showSubMenu('credits'))
+
+// --- Settings Logic (Main Menu) ---
 const shadowCheckbox = document.getElementById('setting-shadows')
 if (shadowCheckbox) {
-    // Set initial state based on renderer default (which we set to false)
     shadowCheckbox.checked = false 
-    
     shadowCheckbox.addEventListener('change', (e) => {
         if (experience && experience.renderer) {
             experience.renderer.setShadows(e.target.checked)
+            // Sync with pause menu checkbox if it exists
+            const pauseShadow = document.getElementById('pause-setting-shadows')
+            if(pauseShadow) pauseShadow.checked = e.target.checked
         }
     })
 }

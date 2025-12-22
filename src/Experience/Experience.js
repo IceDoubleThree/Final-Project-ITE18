@@ -81,13 +81,38 @@ export default class Experience
         this.btnPauseOptions = document.getElementById('btn-pause-options')
         this.btnPauseEndGame = document.getElementById('btn-pause-endgame')
         this.btnPauseMainMenu = document.getElementById('btn-pause-mainmenu')
+        
+        // Sub-menu elements
+        this.pauseMainButtons = document.getElementById('pause-main-buttons')
+        this.pauseSubMenu = document.getElementById('pause-sub-menu')
+        this.btnPauseBack = document.getElementById('btn-pause-back')
+        this.pauseShadowCheckbox = document.getElementById('pause-setting-shadows')
 
         this.btnPauseContinue?.addEventListener('click', () => this.togglePause())
         
         this.btnPauseOptions?.addEventListener('click', () => {
-            console.log('Options clicked (Placeholder)')
-            // TODO: Show options
+            // Switch to sub-menu view
+            if (this.pauseMainButtons) this.pauseMainButtons.style.display = 'none'
+            if (this.pauseSubMenu) this.pauseSubMenu.style.display = 'flex'
         })
+
+        this.btnPauseBack?.addEventListener('click', () => {
+            // Switch back to main buttons
+            if (this.pauseSubMenu) this.pauseSubMenu.style.display = 'none'
+            if (this.pauseMainButtons) this.pauseMainButtons.style.display = 'flex'
+        })
+
+        // Sync shadow checkbox
+        if (this.pauseShadowCheckbox) {
+            this.pauseShadowCheckbox.addEventListener('change', (e) => {
+                if (this.renderer) {
+                    this.renderer.setShadows(e.target.checked)
+                    // Sync with main menu checkbox
+                    const mainShadow = document.getElementById('setting-shadows')
+                    if(mainShadow) mainShadow.checked = e.target.checked
+                }
+            })
+        }
 
         this.btnPauseEndGame?.addEventListener('click', () => {
             this.togglePause() // Unpause first
@@ -118,6 +143,11 @@ export default class Experience
         if (this.isPaused) {
             this.time.pause()
             if (this.pauseMenu) this.pauseMenu.style.display = 'flex'
+            
+            // Reset to main buttons view every time we open pause menu
+            if (this.pauseMainButtons) this.pauseMainButtons.style.display = 'flex'
+            if (this.pauseSubMenu) this.pauseSubMenu.style.display = 'none'
+
             document.exitPointerLock()
             
             // Update buttons based on state
@@ -151,6 +181,12 @@ export default class Experience
         if (mainMenu) {
             mainMenu.classList.remove('hidden')
             mainMenu.style.display = 'block' // Ensure it's visible
+        }
+        
+        // Re-enable Start Button
+        const btnStart = document.getElementById('btn-start-game')
+        if (btnStart) {
+            btnStart.disabled = false
         }
 
         // Hide Pause Menu (already done in togglePause, but safety)

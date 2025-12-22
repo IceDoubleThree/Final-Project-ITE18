@@ -29,18 +29,16 @@
         </div>
 
         <div class="main-menu-right">
-            <div class="main-menu-buttons">
+            <!-- Main Buttons -->
+            <div id="main-menu-buttons" class="main-menu-buttons">
                 <button id="btn-start-game" class="menu-button primary">Start Game</button>
                 <button id="btn-settings" class="menu-button">Settings</button>
                 <button id="btn-help" class="menu-button">Help</button>
                 <button id="btn-credits" class="menu-button">Credits</button>
             </div>
 
-            <div class="menu-content-area" id="menu-content-area">
-                <div id="content-placeholder">
-                    <p>Select an option from the menu.</p>
-                </div>
-                
+            <!-- Sub Menu Container (Hidden by default) -->
+            <div id="sub-menu-container" class="main-menu-buttons" style="display: none;">
                 <div id="content-settings" class="menu-content-section" style="display: none;">
                     <h3>Settings</h3>
                     <div class="setting-item">
@@ -51,13 +49,15 @@
 
                 <div id="content-help" class="menu-content-section" style="display: none;">
                     <h3>Help</h3>
-                    <p>WASD to move<br>Shift to run<br>Space to jump</p>
+                    <p>WASD to move<br>Shift to run<br>Space to jump<br>Esc to pause</p>
                 </div>
 
                 <div id="content-credits" class="menu-content-section" style="display: none;">
                     <h3>Credits</h3>
                     <p>Development Build</p>
                 </div>
+
+                <button id="btn-back-main" class="menu-button">Back</button>
             </div>
         </div>
     </div>
@@ -69,11 +69,25 @@
     <div id="pause-menu" class="pause-menu" style="display: none;">
         <div class="pause-menu-content">
             <div class="pause-menu-title">Paused</div>
-            <div class="pause-menu-buttons">
+            
+            <!-- Pause Main Buttons -->
+            <div id="pause-main-buttons" class="pause-menu-buttons">
                 <button id="btn-pause-continue" class="menu-button primary">Continue</button>
                 <button id="btn-pause-options" class="menu-button">Options</button>
                 <button id="btn-pause-endgame" class="menu-button warning" style="display: none;">End Game</button>
                 <button id="btn-pause-mainmenu" class="menu-button" style="display: none;">Back to Main Menu</button>
+            </div>
+
+            <!-- Pause Sub Menu (Hidden by default) -->
+            <div id="pause-sub-menu" class="pause-menu-buttons" style="display: none;">
+                <div id="pause-content-settings" class="menu-content-section">
+                    <h3>Settings</h3>
+                    <div class="setting-item">
+                        <label for="pause-setting-shadows">Enable Shadows</label>
+                        <input type="checkbox" id="pause-setting-shadows">
+                    </div>
+                </div>
+                <button id="btn-pause-back" class="menu-button">Back</button>
             </div>
         </div>
     </div>
