@@ -23,7 +23,20 @@ export default class Player {
         this.body = null
         this.mixer = null
         this.actions = {}
-        this.currentAction = null
+        // Animation layering:
+        // - baseAction: locomotion (idle/walking/running/walking_legs)
+        // - overlayAction: weapon/aim (gun_aim)
+        this.baseAction = null
+        this.overlayAction = null
+        this.overlaySupportAction = null
+        // Smoothed blending weights
+        this._baseWeight = 1
+        this._overlayWeight = 0
+        this._overlaySupportWeight = 0
+        this._baseWeightTarget = 1
+        this._overlayWeightTarget = 0
+        this._overlaySupportWeightTarget = 0
+        this._lastLoggedAnimationState = ''
 
         // --- WEAPON SYSTEM ---
         this.weapons = {
@@ -111,11 +124,11 @@ export default class Player {
         
         if (isAiming) {
             // Aim mode uses normal-speed gun_aim (left click one-shot may override timeScale).
-            if (this.actions.gun_aim) this.actions.gun_aim.timeScale = 1
-            this.playAnimation('gun_aim')
+            this.playOverlayAnimation('gun_aim', { timeScale: 1 })
         } else {
-            // Return to idle or run
-            this.updateAnimation(false, false)
+            // Exit aim: fade out overlay and resume locomotion selection.
+            this.stopOverlayAnimation()
+            this.updateBaseAnimation(false, false, false)
         }
     }
 
@@ -282,7 +295,8 @@ export default class Player {
         // Clear one-shot flags when an animation finishes
         this.mixer.addEventListener('finished', (event) => {
             const clipName = event?.action?.getClip?.()?.name?.toLowerCase?.() ?? ''
-            if (clipName === 'gun_aim') {
+            // Note: filtered clips may be renamed (e.g. gun_aim__arms)
+            if (clipName.includes('gun_aim') || clipName.includes('aim_gun')) {
                 this._oneShotGunAimActive = false
                 // Keep the clamped end pose briefly before returning to locomotion.
                 this._gunAimHoldUntilMs = (this.time?.elapsed ?? 0) + this._gunAimOneShotHoldMs
@@ -322,10 +336,81 @@ export default class Player {
             console.table(animationTable)
             console.groupEnd()
 
+            // Helper: filter a clip's tracks by bone name.
+            const getBoneNameFromTrack = (trackName = '') => {
+                // Common formats:
+                // - "mixamorigSpine.quaternion"
+                // - "Armature|mixamorigSpine.quaternion"
+                const beforeProp = trackName.split('.')[0] || ''
+                const afterPipe = beforeProp.split('|').pop() || beforeProp
+                return afterPipe
+            }
+
+            const isUpperBodyBone = (boneName = '') => {
+                // Keep broad matching to handle different rigs (Mixamo, Blender exports, etc.)
+                return /spine|chest|neck|head|clavicle|shoulder|upperarm|forearm|hand|arm|finger|wrist/i.test(boneName)
+            }
+
+            const isArmBone = (boneName = '') => {
+                return /clavicle|shoulder|upperarm|forearm|hand|arm|finger|wrist/i.test(boneName)
+            }
+
+            const isTorsoBone = (boneName = '') => {
+                return /spine|chest|neck|head/i.test(boneName)
+            }
+
+            const isLowerBodyBone = (boneName = '') => {
+                return /pelvis|hip|thigh|calf|shin|knee|ankle|foot|toe|leg/i.test(boneName)
+            }
+
+            const makeFilteredClip = (clip, trackPredicate, newNameSuffix) => {
+                const tracks = (clip?.tracks || []).filter((t) => {
+                    const boneName = getBoneNameFromTrack(t?.name || '')
+                    return trackPredicate(boneName, t)
+                })
+
+                if (!tracks.length) return null
+                return new THREE.AnimationClip(`${clip.name}${newNameSuffix}`, clip.duration, tracks)
+            }
+
             // Create actions for available animations
             this.animations.forEach(clip => {
-                const action = this.mixer.clipAction(clip)
                 const key = clip.name.toLowerCase()
+
+                // Reduce track conflicts by filtering to logical body regions.
+                // - gun_aim should affect upper body only
+                // - walking_legs should affect lower body only (even if source clip accidentally contains extra tracks)
+                let clipForAction = clip
+                if (key === 'gun_aim' || key === 'aim_gun') {
+                    const filtered = makeFilteredClip(
+                        clip,
+                        // Arms only: torso/head can be supported by idle_upper.
+                        (boneName) => isArmBone(boneName) && !/pelvis|hip/i.test(boneName),
+                        '__arms'
+                    )
+                    if (filtered) clipForAction = filtered
+                }
+
+                if (key === 'idle_upper') {
+                    const filtered = makeFilteredClip(
+                        clip,
+                        // Torso only: avoid fighting arm pose with gun_aim.
+                        (boneName) => isTorsoBone(boneName) && !/pelvis|hip/i.test(boneName),
+                        '__torso'
+                    )
+                    if (filtered) clipForAction = filtered
+                }
+
+                if (key === 'walking_legs') {
+                    const filtered = makeFilteredClip(
+                        clip,
+                        (boneName) => isLowerBodyBone(boneName),
+                        '__lower'
+                    )
+                    if (filtered) clipForAction = filtered
+                }
+
+                const action = this.mixer.clipAction(clipForAction)
 
                 // Aim clip should play fully once and then hold final pose while aiming
                 if (key === 'gun_aim') {
@@ -342,15 +427,19 @@ export default class Player {
 
             // Start with idle if available
             if (this.actions.idle) {
-                this.currentAction = this.actions.idle
-                this.currentAction.play()
+                this.baseAction = this.actions.idle
+                this.baseAction.enabled = true
+                this.baseAction.setEffectiveWeight?.(1)
+                this.baseAction.play()
                 console.log('✅ Started playing idle animation')
             } else if (Object.keys(this.actions).length > 0) {
                 // If no idle, play the first available animation
                 const firstKey = Object.keys(this.actions)[0]
                 const firstAction = this.actions[firstKey]
-                this.currentAction = firstAction
-                this.currentAction.play()
+                this.baseAction = firstAction
+                this.baseAction.enabled = true
+                this.baseAction.setEffectiveWeight?.(1)
+                this.baseAction.play()
                 console.log(`✅ Started playing first available animation: ${firstKey}`)
             }
         } else {
@@ -358,51 +447,196 @@ export default class Player {
         }
     }
 
-    playAnimation(animationName) {
-        // Try exact match first
-        let newAction = this.actions[animationName]
+    _resolveActionKey(requestedName) {
+        if (!requestedName) return null
+        // Exact match first
+        if (this.actions[requestedName]) return requestedName
+        const targetLower = requestedName.toLowerCase()
+        const matchedKey = Object.keys(this.actions).find((key) => key.toLowerCase().includes(targetLower))
+        return matchedKey || null
+    }
 
-        // If not found, try case-insensitive and partial matching
-        if (!newAction) {
-            const targetLower = animationName.toLowerCase()
-            const matchedKey = Object.keys(this.actions).find(key =>
-                key.toLowerCase().includes(targetLower)
-            )
-            newAction = matchedKey ? this.actions[matchedKey] : null
+    _getActionClipName(action) {
+        return action?.getClip?.()?.name ?? ''
+    }
+
+    _logCurrentAnimations(reason = '') {
+        const base = this._getActionClipName(this.baseAction)
+        const overlay = this._getActionClipName(this.overlayAction)
+        const support = this._getActionClipName(this.overlaySupportAction)
+        const state = `base=${base || 'none'} | overlay=${overlay || 'none'} | support=${support || 'none'}`
+
+        if (state === this._lastLoggedAnimationState) return
+        this._lastLoggedAnimationState = state
+
+        if (reason) {
+            console.log(`🎞️ Animations (${reason}): ${state}`)
+        } else {
+            console.log(`🎞️ Animations: ${state}`)
+        }
+    }
+
+    _updateAnimationLayerWeights(isGunOverlayActive, isMoving, shouldSupportOverlay) {
+        // Targets (smoothed to avoid snapping):
+        // - overlay fades in/out
+        // - base dips slightly while standing still with overlay active (prevents averaging with idle)
+        this._overlayWeightTarget = isGunOverlayActive ? 1 : 0
+        this._overlaySupportWeightTarget = shouldSupportOverlay ? 1 : 0
+        this._baseWeightTarget = isGunOverlayActive ? (isMoving ? 1 : 0.15) : 1
+
+        const dt = (this.time?.delta ?? 16) / 1000
+        const lerp = (a, b, t) => a + (b - a) * t
+        const smoothing = 12 // higher = faster blend
+        const t = 1 - Math.exp(-smoothing * dt)
+
+        this._overlayWeight = lerp(this._overlayWeight, this._overlayWeightTarget, t)
+        this._overlaySupportWeight = lerp(this._overlaySupportWeight, this._overlaySupportWeightTarget, t)
+        this._baseWeight = lerp(this._baseWeight, this._baseWeightTarget, t)
+
+        if (this.overlayAction) {
+            this.overlayAction.enabled = true
+            this.overlayAction.setEffectiveWeight?.(this._overlayWeight)
         }
 
+        if (this.overlaySupportAction) {
+            this.overlaySupportAction.enabled = true
+            this.overlaySupportAction.setEffectiveWeight?.(this._overlaySupportWeight)
+        }
+        if (this.baseAction) {
+            this.baseAction.enabled = true
+            this.baseAction.setEffectiveWeight?.(this._baseWeight)
+        }
+
+        // When overlay is effectively gone, stop it (do NOT reset immediately; avoids pose pop).
+        if (!isGunOverlayActive && this.overlayAction && this._overlayWeight <= 0.01) {
+            this.overlayAction.stop()
+            this.overlayAction.enabled = false
+            this.overlayAction.timeScale = 1
+            this.overlayAction = null
+            this._logCurrentAnimations('overlay stop')
+        }
+
+        if (!isGunOverlayActive && this.overlaySupportAction && this._overlaySupportWeight <= 0.01) {
+            this.overlaySupportAction.stop()
+            this.overlaySupportAction.enabled = false
+            this.overlaySupportAction.timeScale = 1
+            this.overlaySupportAction = null
+            this._logCurrentAnimations('support stop')
+        }
+    }
+
+    playBaseAnimation(animationName) {
+        if (!this.mixer || Object.keys(this.actions).length === 0) return
+
+        const resolvedKey = this._resolveActionKey(animationName)
+        const newAction = resolvedKey ? this.actions[resolvedKey] : null
         if (!newAction) {
-            console.warn(`⚠️ Animation "${animationName}" not available. Available: ${Object.keys(this.actions).join(', ')}`)
+            console.warn(`⚠️ Base animation "${animationName}" not available. Available: ${Object.keys(this.actions).join(', ')}`)
             return
         }
 
-        if (newAction === this.currentAction) return
+        if (newAction === this.baseAction) return
 
-        // Smooth transition between animations
-        if (this.currentAction) {
-            this.currentAction.fadeOut(0.3)
+        if (this.baseAction) {
+            this.baseAction.fadeOut(0.2)
         }
 
+        newAction.enabled = true
         newAction.reset()
-        newAction.fadeIn(0.3)
+        newAction.fadeIn(0.2)
         newAction.play()
 
-        this.currentAction = newAction
-        console.log(`🎬 Playing ${animationName}`)
+        this.baseAction = newAction
+        this._logCurrentAnimations('base change')
     }
 
-    updateAnimation(isMoving, isRunning) {
+    playOverlayAnimation(animationName, { timeScale = 1 } = {}) {
         if (!this.mixer || Object.keys(this.actions).length === 0) return
 
-        if (!isMoving) {
-            this.playAnimation('idle')
-        } else if (isRunning) {
-            this.playAnimation('running')
-        } else {
-            this.playAnimation('walking')
+        const resolvedKey = this._resolveActionKey(animationName)
+        const newAction = resolvedKey ? this.actions[resolvedKey] : null
+        if (!newAction) {
+            console.warn(`⚠️ Overlay animation "${animationName}" not available. Available: ${Object.keys(this.actions).join(', ')}`)
+            return
         }
 
-        // Mixer update is handled once per frame in `update()` so aiming doesn't freeze.
+        // Do not fade out the base action; overlays should stack.
+        if (this.overlayAction && this.overlayAction !== newAction) {
+            // Smoothly transition between overlays if needed.
+            this.overlayAction.fadeOut(0.15)
+        }
+
+        newAction.enabled = true
+        newAction.setEffectiveWeight?.(1)
+        newAction.timeScale = timeScale
+
+        // Ensure we can replay a LoopOnce+clamped clip reliably.
+        newAction.reset()
+        newAction.fadeIn(0.2)
+        newAction.play()
+
+        this.overlayAction = newAction
+        // Force targets to blend in smoothly.
+        this._overlayWeightTarget = 1
+        this._logCurrentAnimations('overlay start')
+    }
+
+    playOverlaySupportAnimation(animationName) {
+        if (!this.mixer || Object.keys(this.actions).length === 0) return
+
+        const resolvedKey = this._resolveActionKey(animationName)
+        const newAction = resolvedKey ? this.actions[resolvedKey] : null
+        if (!newAction) return
+
+        if (this.overlaySupportAction === newAction) return
+
+        if (this.overlaySupportAction && this.overlaySupportAction !== newAction) {
+            this.overlaySupportAction.fadeOut(0.2)
+        }
+
+        newAction.enabled = true
+        newAction.setEffectiveWeight?.(1)
+        newAction.timeScale = 1
+        newAction.reset()
+        newAction.fadeIn(0.25)
+        newAction.play()
+
+        this.overlaySupportAction = newAction
+        this._overlaySupportWeightTarget = 1
+        this._logCurrentAnimations('support start')
+    }
+
+    stopOverlayAnimation() {
+        if (!this.overlayAction) return
+        // Weight smoothing will fade it out; fadeOut helps too.
+        this._overlayWeightTarget = 0
+        this.overlayAction.fadeOut(0.25)
+    }
+
+    stopOverlaySupportAnimation() {
+        if (!this.overlaySupportAction) return
+        this._overlaySupportWeightTarget = 0
+        this.overlaySupportAction.fadeOut(0.25)
+    }
+
+    updateBaseAnimation(isMoving, isRunning, isGunOverlayActive) {
+        if (!this.mixer || Object.keys(this.actions).length === 0) return
+
+        // While gun overlay is active, prefer the legs-only walk clip when moving.
+        // Fallback to normal walking if walking_legs doesn't exist.
+        if (isGunOverlayActive && isMoving) {
+            const hasWalkingLegs = !!this._resolveActionKey('walking_legs')
+            this.playBaseAnimation(hasWalkingLegs ? 'walking_legs' : 'walking')
+            return
+        }
+
+        if (!isMoving) {
+            this.playBaseAnimation('idle')
+        } else if (isRunning) {
+            this.playBaseAnimation('running')
+        } else {
+            this.playBaseAnimation('walking')
+        }
     }
 
     setPhysics() {
@@ -475,10 +709,7 @@ export default class Player {
                 this._oneShotGunAimActive = true
                 this._gunAimHoldUntilMs = 0
 
-                if (this.actions.gun_aim) {
-                    this.actions.gun_aim.timeScale = this._gunAimOneShotTimeScale
-                }
-                this.playAnimation('gun_aim')
+                this.playOverlayAnimation('gun_aim', { timeScale: this._gunAimOneShotTimeScale })
             }
 
             // Continuous shooting while held (Weapon.fireRate handles pacing)
@@ -492,13 +723,15 @@ export default class Player {
             this._oneShotGunAimActive = false
             this._gunAimHoldUntilMs = 0
             if (this.isAiming) this.setAiming(false)
+            this.stopOverlayAnimation()
+            this.stopOverlaySupportAnimation()
         }
 
         // --- NEW: Stop movement if Dialogue is open ---
         if (this.experience.dialogue.isActive()) {
             this.body.velocity.x = 0
             this.body.velocity.z = 0
-            this.updateAnimation(false, false)
+            this.updateBaseAnimation(false, false, false)
             return // Stop processing movement
         }
 
@@ -566,17 +799,37 @@ export default class Player {
         }
 
         // Update animations
-        // - While aiming, we let gun_aim hold pose (clamped).
-        // - While shooting (left click) we let the one-shot gun_aim finish before returning to locomotion.
+        // - While aiming or during a one-shot gun_aim, keep gun overlay active.
+        // - While gun overlay is active and the player moves, play walking_legs alongside it.
         const isHoldingGunAimPose = nowMs < (this._gunAimHoldUntilMs || 0)
-        if (!this.isAiming && !this._oneShotGunAimActive && !isHoldingGunAimPose) {
-            this.updateAnimation(isMoving, isRunning)
+        const isGunOverlayActive = this.isAiming || this._oneShotGunAimActive || isHoldingGunAimPose
+
+        // Keep idle_upper running while gun overlay is active OR while the gun overlay is still blending out.
+        // This helps the pose return smoothly instead of feeling "stuck".
+        const shouldSupportOverlay = isGunOverlayActive || (this.overlayAction && this._overlayWeight > 0.01)
+
+        // Keep torso/head stable while gun_aim (arms) is active.
+        if (shouldSupportOverlay) {
+            this.playOverlaySupportAnimation('idle_upper')
+        } else {
+            this.stopOverlaySupportAnimation()
+        }
+        this.updateBaseAnimation(isMoving, isRunning, isGunOverlayActive)
+
+        // Apply smoothed weights after selecting the base clip (so new base action gets the right weight).
+        this._updateAnimationLayerWeights(isGunOverlayActive, isMoving, shouldSupportOverlay)
+
+        // If the gun overlay is no longer needed, fade it out and stop/reset once faded.
+        if (!isGunOverlayActive) {
+            this.stopOverlayAnimation()
         }
 
         // Always advance animations (including while aiming)
         if (this.mixer) {
             this.mixer.update(this.time.delta / 1000)
         }
+
+        // Overlay cleanup is handled in _updateAnimationLayerWeights().
 
         // Position mesh so its center matches the physics body
         this.mesh.position.copy(this.body.position)
