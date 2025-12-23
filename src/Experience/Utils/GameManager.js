@@ -31,6 +31,7 @@ export default class GameManager {
       time: document.getElementById('game-end-time'),
       kills: document.getElementById('game-end-kills'),
       _keyHandler: null,
+      _clickHandler: null,
       isVisible: false,
     }
 
@@ -95,6 +96,9 @@ export default class GameManager {
     this.currentLevelNumber = 0;
     this.kills = 0;
 
+    // Stop enemies from persisting across runs.
+    this.experience?.world?.clearEnemies?.();
+
     if (this.timerEl && this.timerEl.parentElement) {
       this.timerEl.parentElement.removeChild(this.timerEl);
     }
@@ -116,6 +120,34 @@ export default class GameManager {
 
     el.style.display = 'flex'
     this.endBoard.isVisible = true
+
+    // Click/tap anywhere on the board to return to lobby
+    // (same behavior as pressing Enter)
+    if (!this.endBoard._clickHandler) {
+      this.endBoard._clickHandler = () => {
+        if (!this.endBoard.isVisible) return
+
+        this.hideEndBoard()
+
+        // Reset run state and return to lobby (Room)
+        if (this.experience) {
+          this.experience._runStarted = false
+
+          // Let the target function manage current_env
+          if (typeof this.experience.enterLobby === 'function') {
+            this.experience.enterLobby('Room')
+          } else {
+            this.experience.playShortTransition?.()
+            setTimeout(() => {
+              this.experience.world?.loadLocation?.('Room')
+            }, 120)
+          }
+        }
+      }
+      el.addEventListener('click', this.endBoard._clickHandler)
+      // Optional: allow touchscreens to dismiss without waiting for click synthesis.
+      el.addEventListener('touchstart', this.endBoard._clickHandler, { passive: true })
+    }
 
     // Press Enter to return to lobby
     if (!this.endBoard._keyHandler) {

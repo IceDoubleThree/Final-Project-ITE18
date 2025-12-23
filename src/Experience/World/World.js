@@ -621,6 +621,9 @@ export default class World {
       origin: config.origin.clone(),
       size: config.size,
       group,
+      // Mark ready on the first World.update tick after building.
+      // This gives the engine one frame to apply player reset/physics before any level logic spawns.
+      isReady: false,
       physicsBodies: [],
       disposables: [],
       npcs: [],
@@ -661,6 +664,23 @@ export default class World {
     }
 
     return state;
+  }
+
+  clearEnemies() {
+    const loc = this.currentLocation
+    if (!loc?.enemies || loc.enemies.length === 0) return
+
+    loc.enemies.forEach((enemy) => {
+      if (enemy?.destroy) enemy.destroy()
+      else {
+        if (enemy?.mesh && enemy.mesh.parent) enemy.mesh.parent.remove(enemy.mesh)
+        if (enemy?.mesh?.geometry) enemy.mesh.geometry.dispose()
+        if (enemy?.mesh?.material) enemy.mesh.material.dispose()
+        if (enemy?.body) this.physicsWorld.removeBody(enemy.body)
+      }
+    })
+
+    loc.enemies.length = 0
   }
 
   createPerimeterHelper(size) {
@@ -757,6 +777,12 @@ export default class World {
       this.player.update();
     }
 
+    // Mark the current location ready on the first frame after it's built.
+    // (Used to prevent spawns/logic from running during the same tick as loadLocation.)
+    if (this.currentLocation && !this.currentLocation.isReady) {
+      this.currentLocation.isReady = true
+    }
+
     // 3. Update Current Location Logic (Portals, etc)
     if (this.currentLocation && this.currentLocation.updates) {
       this.currentLocation.updates.forEach((updateFn) => updateFn());
@@ -768,7 +794,8 @@ export default class World {
     }
 
     // 4.5 Update Enemies
-    if (this.currentLocation && this.currentLocation.enemies) {
+    // Enemies should only simulate during an active run and once the location is ready.
+    if (this.experience?.game?.active && this.currentLocation?.isReady && this.currentLocation?.enemies) {
       this.currentLocation.enemies.forEach((enemy) => enemy.update());
     }
 

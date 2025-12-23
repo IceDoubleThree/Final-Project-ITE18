@@ -1063,7 +1063,8 @@ export default class Player {
                 this.body.velocity.z = 0
             }
         } else if (shouldFaceCameraWhileShooting) {
-            // While shooting (left click hold), face where the camera looks.
+            // While shooting (left click hold), face where the camera looks (shoot direction).
+            // Movement remains camera-relative.
             const camera = this.experience.camera.instance
             const cameraDirection = new THREE.Vector3()
             camera.getWorldDirection(cameraDirection)

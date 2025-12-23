@@ -331,6 +331,10 @@ export default function buildAcademy(state) {
     update: () => {
       state.portals.forEach((p) => p.update());
 
+      // Don't run level mechanics/spawning until the World marks this location as ready.
+      // (Prevents spawning during the same tick as loadLocation/resetPlayer.)
+      if (!state.isReady) return;
+
       const game = this.experience?.game;
       if (!game?.active) return;
       if (game.currentLevelKey !== 'Academy') return;
