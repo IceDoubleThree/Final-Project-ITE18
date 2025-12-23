@@ -1,3 +1,8 @@
+# Academy of Spent Shells
+A game where you get to be a anime girl shooting monsters because why not?
+
+
+
 
 ## Setup
 Download [Node.js](https://nodejs.org/en/download/).
