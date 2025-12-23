@@ -13,7 +13,23 @@ export default class SoundHandler {
 		this._fadeRaf = null
 		this._armedForUserGesture = false
 		this._pendingConfig = null
+		this._muted = false
 		this._onUserGesture = this._onUserGesture.bind(this)
+	}
+
+	setMuted(muted) {
+		this._muted = Boolean(muted)
+		if (this._audio) {
+			try {
+				this._audio.muted = this._muted
+			} catch {
+				// ignore
+			}
+		}
+	}
+
+	isMuted() {
+		return this._muted
 	}
 
 	playAudio(state) {
@@ -25,6 +41,7 @@ export default class SoundHandler {
 
 		const audio = new Audio(config.src)
 		audio.preload = 'auto'
+		audio.muted = this._muted
 		audio.loop = false // custom looping so we can apply a gap
 		audio.addEventListener('ended', () => {
 			if (!config.loop) return

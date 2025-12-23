@@ -285,3 +285,27 @@ if (shadowCheckbox) {
         }
     })
 }
+
+// --- Settings Logic: Mute Music (Main + Pause) ---
+const muteCheckbox = document.getElementById('setting-mute-music')
+const pauseMuteCheckbox = document.getElementById('pause-setting-mute-music')
+
+const setMusicMuted = (muted) => {
+	soundHandler?.setMuted?.(muted)
+	if (muteCheckbox) muteCheckbox.checked = Boolean(muted)
+	if (pauseMuteCheckbox) pauseMuteCheckbox.checked = Boolean(muted)
+}
+
+if (muteCheckbox) {
+	muteCheckbox.checked = Boolean(soundHandler?.isMuted?.())
+	muteCheckbox.addEventListener('change', (e) => {
+		setMusicMuted(e.target.checked)
+	})
+}
+
+if (pauseMuteCheckbox) {
+	pauseMuteCheckbox.checked = Boolean(soundHandler?.isMuted?.())
+	pauseMuteCheckbox.addEventListener('change', (e) => {
+		setMusicMuted(e.target.checked)
+	})
+}

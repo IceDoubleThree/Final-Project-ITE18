@@ -312,6 +312,7 @@ body
     inset: 0;
     background: #000;
     z-index: 3000;
+    color: #fff;
 }
 
 .main-menu.hidden {
