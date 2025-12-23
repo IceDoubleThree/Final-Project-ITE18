@@ -6,6 +6,7 @@ export default class GameManager {
 
     this.elapsedMs = 0;
     this.timerEl = null;
+    this.timerPaused = false;
 
     this.levelOrder = [];
     this.currentLevelKey = null;
@@ -60,6 +61,7 @@ export default class GameManager {
 
     this.active = true;
     this.elapsedMs = 0;
+    this.timerPaused = false;
     this.kills = 0;
     this.levelProgress = {};
 
@@ -102,6 +104,7 @@ export default class GameManager {
   stop() {
     this.active = false;
     this.elapsedMs = 0;
+    this.timerPaused = false;
     this.currentLevelKey = null;
     this.currentLevelNumber = 0;
     this.kills = 0;
@@ -286,7 +289,9 @@ export default class GameManager {
     }
 
     const d = Number.isFinite(deltaMs) ? deltaMs : 0;
-    this.elapsedMs += Math.max(0, d);
+    if (!this.timerPaused) {
+      this.elapsedMs += Math.max(0, d);
+    }
 
     if (this.timerEl) this.timerEl.textContent = this.formatElapsed(this.elapsedMs);
 
@@ -374,6 +379,11 @@ export default class GameManager {
     const prevKey = this.currentLevelKey;
     this.currentLevelKey = locationKey;
 
+    // Resume the timer when entering a new level.
+    if (locationKey && locationKey !== prevKey) {
+      this.timerPaused = false;
+    }
+
     // Initialize per-level progress when entering a new level
     if (locationKey && locationKey !== prevKey) {
       this.levelProgress[locationKey] = {
@@ -415,6 +425,7 @@ export default class GameManager {
 
     if (cond.isComplete(this)) {
       progress.completed = true;
+      this.timerPaused = true;
       // Show level complete feedback once.
       if (!progress._shownCompleteOverlay) {
         progress._shownCompleteOverlay = true;
