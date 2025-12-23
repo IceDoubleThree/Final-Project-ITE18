@@ -47,6 +47,8 @@ export default class Player {
                 damage: 1,
                 range: 50,
                 cooldown: 0.5,
+				// Prevent rapid double-click from queueing a shot during cooldown.
+				bufferWindowMs: 0,
                 ammo_size: 20,
                 reloading_time: 3
             })
@@ -62,6 +64,7 @@ export default class Player {
         // Shooting / animation state
         this._wasShooting = false
         this._isShootingHeld = false
+		this._weaponWasReloading = false
         this._oneShotGunAimActive = false
 
         // One-shot gun_aim timing (left click)
@@ -127,6 +130,7 @@ export default class Player {
     equipWeapon(weaponKey) {
         if (weaponKey === 'pistol') {
             this.currentWeapon = this.weapons.pistol
+			this._weaponWasReloading = Boolean(this.currentWeapon?.isReloading)
             if (this.pistolMesh) this.pistolMesh.visible = true
             this.experience.camera?.setWeaponActive?.(true)
             console.log('Equipped Pistol')
@@ -134,6 +138,7 @@ export default class Player {
             document.querySelector('.hud-weapon-slot.slot-1').classList.add('active')
         } else {
             this.currentWeapon = null
+			this._weaponWasReloading = false
             if (this.pistolMesh) this.pistolMesh.visible = false
             this.setAiming(false)
             this.experience.camera?.setWeaponActive?.(false)
@@ -142,6 +147,10 @@ export default class Player {
             document.querySelector('.hud-weapon-slot.slot-1').classList.remove('active')
         }
     }
+
+	_playSfx(name, opts) {
+		this.experience?.soundHandler?.playSfx?.(name, opts)
+	}
 
     setAiming(isAiming) {
         if (this.isAiming === isAiming) return
@@ -164,7 +173,10 @@ export default class Player {
 
         const nowMs = this.time?.elapsed ?? 0
         const fired = this.currentWeapon.requestFire(nowMs)
-        if (fired) this._fireCameraRay(nowMs)
+		if (fired) {
+			this._fireCameraRay(nowMs)
+			if (this.currentWeapon === this.weapons?.pistol) this._playSfx('pistol_shot')
+		}
         return fired
     }
 
@@ -932,9 +944,14 @@ export default class Player {
 
         // --- WEAPON INPUT ---
         if (this.currentWeapon) {
+			const wasReloading = Boolean(this._weaponWasReloading)
+
             // Process weapon timers (reload completion + buffered shots)
             const firedFromBuffer = this.currentWeapon.update(nowMs)
-            if (firedFromBuffer) this._fireCameraRay(nowMs)
+			if (firedFromBuffer) {
+				this._fireCameraRay(nowMs)
+				if (this.currentWeapon === this.weapons?.pistol) this._playSfx('pistol_shot')
+			}
 
             // Right click ONLY: aim mode (camera zoom/offset + reduced movement speed)
             if (this.input.keys.aim !== this.isAiming) {
@@ -974,13 +991,23 @@ export default class Player {
                 this.shoot() // buffered requestFire
             } else if (isShooting) {
                 const firedHeld = this.currentWeapon.tryFireHeld(nowMs)
-                if (firedHeld) this._fireCameraRay(nowMs)
+                if (firedHeld) {
+                    this._fireCameraRay(nowMs)
+                    if (this.currentWeapon === this.weapons?.pistol) this._playSfx('pistol_shot')
+                }
             }
+
+            const isReloadingNow = Boolean(this.currentWeapon?.isReloading)
+            if (!wasReloading && isReloadingNow) {
+                if (this.currentWeapon === this.weapons?.pistol) this._playSfx('pistol_reload')
+            }
+            this._weaponWasReloading = isReloadingNow
 
             this._wasShooting = isShooting
         } else {
             this._wasShooting = false
             this._isShootingHeld = false
+			this._weaponWasReloading = false
             this._oneShotGunAimActive = false
             this._gunAimHoldUntilMs = 0
             if (this.isAiming) this.setAiming(false)

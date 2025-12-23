@@ -29,6 +29,11 @@ const designerFontReady = loadDesignerFont()
 // --- Audio ---
 const soundHandler = new SoundHandler()
 
+// Expose to gameplay systems (Experience is a singleton, so Player can access this too)
+if (experience) {
+	experience.soundHandler = soundHandler
+}
+
 // Drive menu BGM from current_env
 const syncMenuBgmForEnv = (env) => {
 	if (env === 'main_menu') soundHandler.playAudio('main_menu')
@@ -125,6 +130,7 @@ const btnStart = document.getElementById('btn-start-game')
 const btnSettings = document.getElementById('btn-settings')
 const btnHelp = document.getElementById('btn-help')
 const btnCredits = document.getElementById('btn-credits')
+const btnMute = document.getElementById('btn-mute')
 
 // Credits overlay wiring (full-screen, click to exit)
 const creditsOverlay = document.getElementById('credits-overlay')
@@ -294,6 +300,7 @@ const setMusicMuted = (muted) => {
 	soundHandler?.setMuted?.(muted)
 	if (muteCheckbox) muteCheckbox.checked = Boolean(muted)
 	if (pauseMuteCheckbox) pauseMuteCheckbox.checked = Boolean(muted)
+	if (btnMute) btnMute.textContent = Boolean(muted) ? 'Unmute' : 'Mute'
 }
 
 if (muteCheckbox) {
@@ -307,5 +314,16 @@ if (pauseMuteCheckbox) {
 	pauseMuteCheckbox.checked = Boolean(soundHandler?.isMuted?.())
 	pauseMuteCheckbox.addEventListener('change', (e) => {
 		setMusicMuted(e.target.checked)
+	})
+}
+
+// --- Quick Mute Button (Main Menu bottom-left) ---
+if (btnMute) {
+	// Initialize label
+	btnMute.textContent = Boolean(soundHandler?.isMuted?.()) ? 'Unmute' : 'Mute'
+
+	btnMute.addEventListener('click', () => {
+		const next = !Boolean(soundHandler?.isMuted?.())
+		setMusicMuted(next)
 	})
 }

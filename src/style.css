@@ -458,6 +458,16 @@ body
     transition: background 0.2s ease, transform 0.1s ease;
 }
 
+/* Small quick-toggle used on the main menu bottom-left */
+.mute-button {
+    position: fixed;
+    left: 50px;
+    bottom: 50px;
+    z-index: 3001;
+    padding: 8px 14px;
+    font-size: 13px;
+}
+
 .menu-button.primary {
     background: #c62828;
 }
