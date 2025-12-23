@@ -1,6 +1,12 @@
 import Experience from './Experience/Experience.js'
+import SoundHandler from './Experience/Utils/SoundHandler.js'
 
 const experience = new Experience(document.querySelector('canvas.webgl'))
+
+// --- Audio ---
+const soundHandler = new SoundHandler()
+// Play when main menu loads (will wait for first click if autoplay is blocked)
+soundHandler.playAudio('main_menu')
 
 // --- Loading screen wiring ---
 const loadingScreen = document.getElementById('loading-screen')
@@ -59,6 +65,27 @@ const btnSettings = document.getElementById('btn-settings')
 const btnHelp = document.getElementById('btn-help')
 const btnCredits = document.getElementById('btn-credits')
 
+// Credits overlay wiring (full-screen, click to exit)
+const creditsOverlay = document.getElementById('credits-overlay')
+const creditsRoll = document.getElementById('credits-roll')
+
+const openCreditsOverlay = () => {
+	if (!creditsOverlay || !creditsRoll) return
+	creditsOverlay.style.display = 'block'
+	// Restart animation reliably
+	creditsRoll.classList.remove('play')
+	void creditsRoll.offsetWidth
+	creditsRoll.classList.add('play')
+}
+
+const closeCreditsOverlay = () => {
+	if (!creditsOverlay || !creditsRoll) return
+	creditsRoll.classList.remove('play')
+	creditsOverlay.style.display = 'none'
+}
+
+creditsOverlay?.addEventListener('click', closeCreditsOverlay)
+
 // Debug-only: add location selector to the main menu
 const isDebugMenu = window.location.hash === '#debug'
 let debugLocationSelect = null
@@ -102,6 +129,9 @@ if (isDebugMenu && mainMenu && btnStart && experience?.world?.locationConfigs) {
 
 if (btnStart) {
 	btnStart.addEventListener('click', () => {
+		// Main menu music should only play in main menu
+		soundHandler.fadeOut(800)
+
 		// Prevent repeated activation (e.g. Space key triggers click on focused button)
 		btnStart.disabled = true
 		btnStart.blur()
@@ -182,7 +212,7 @@ btnBackMain?.addEventListener('click', backToMainMenu)
 
 btnSettings?.addEventListener('click', () => showSubMenu('settings'))
 btnHelp?.addEventListener('click', () => showSubMenu('help'))
-btnCredits?.addEventListener('click', () => showSubMenu('credits'))
+btnCredits?.addEventListener('click', openCreditsOverlay)
 
 // --- Settings Logic (Main Menu) ---
 const shadowCheckbox = document.getElementById('setting-shadows')
