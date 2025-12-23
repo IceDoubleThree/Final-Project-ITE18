@@ -46,9 +46,9 @@ export default class Player {
                 // Back-compat: older code may still look at `weapon.damage`
                 damage: 1,
                 range: 50,
-                cooldown: 0.2,
+                cooldown: 0.5,
                 ammo_size: 20,
-                reloading_time: 5
+                reloading_time: 3
             })
         }
         this.currentWeapon = null
@@ -84,7 +84,7 @@ export default class Player {
 
         // --- GAME STATS (for future mechanics) ---
         this.baseHp = 100
-        this.baseAttack = 1
+        this.baseAttack = 5
         this.baseDefense = 0
         this.hp = this.baseHp
         this.attack = this.baseAttack

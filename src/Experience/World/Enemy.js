@@ -24,6 +24,7 @@ export default class Enemy {
 
         // Common stats (future difficulty scaling can modify these)
         this.baseDamage = this.type === EnemyTypes.RUNNER ? 2 : 1
+        // Walkers: 10 HP (per design), Runners: lower HP but higher mobility.
         this.maxHp = this.type === EnemyTypes.RUNNER ? 5 : 10
         this.hp = this.maxHp
 
@@ -56,7 +57,7 @@ export default class Enemy {
             // Prevent spam
             cooldownMs: 1400,
             // Vertical speed to set when jumping
-            jumpVelocity: 5.25,
+            jumpVelocity: this.type === EnemyTypes.RUNNER ? 6.75 : 5.25,
             // Small forward boost to help clear edges while jumping
             forwardBoost: 1.25,
         }

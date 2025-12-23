@@ -22,8 +22,25 @@ export default function buildAcademy(state) {
   let warpUnlocked = false;
 
   // Respawn pacing (lower = faster). Spawns at most 1 enemy per interval.
-  const spawnIntervalMs = 200;
+  // Level 1 warmup: start slower and ramp to the baseline interval.
+  const baseSpawnIntervalMs = 200;
+  const startSpawnIntervalMs = 900;
+  const spawnRampDurationMs = 20_000;
   let nextSpawnTimeMs = 0;
+
+  // Capture when level mechanics begin (Time.elapsed keeps running across locations).
+  let levelStartTimeMs = null;
+
+  const clamp01 = (v) => Math.min(1, Math.max(0, v));
+
+  const getSpawnIntervalMs = (nowMs) => {
+    if (!Number.isFinite(nowMs)) return baseSpawnIntervalMs;
+    if (!Number.isFinite(levelStartTimeMs)) return startSpawnIntervalMs;
+
+    const t = clamp01((nowMs - levelStartTimeMs) / spawnRampDurationMs);
+    // Linear ramp from slow -> fast.
+    return startSpawnIntervalMs + (baseSpawnIntervalMs - startSpawnIntervalMs) * t;
+  };
 
   const spawnEnemyAt = (pos) => {
     const enemy = nextTypeIsRunner
@@ -341,6 +358,8 @@ export default function buildAcademy(state) {
 
       const nowMs = this.experience?.time?.elapsed ?? 0;
 
+      if (!Number.isFinite(levelStartTimeMs)) levelStartTimeMs = nowMs;
+
       const levelComplete = typeof game.isLevelComplete === 'function'
         ? game.isLevelComplete('Academy')
         : false;
@@ -375,7 +394,7 @@ export default function buildAcademy(state) {
       const desiredAlive = spawnPoints.length * 2;
       if (state.enemies.length < desiredAlive && spawnPoints.length > 0) {
         if (nowMs >= nextSpawnTimeMs) {
-          nextSpawnTimeMs = nowMs + spawnIntervalMs;
+          nextSpawnTimeMs = nowMs + getSpawnIntervalMs(nowMs);
           const p = spawnPoints[nextSpawnIndex % spawnPoints.length];
           nextSpawnIndex++;
           spawnEnemyAt(p);

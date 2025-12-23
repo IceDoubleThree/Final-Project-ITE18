@@ -35,6 +35,15 @@ export default class GameManager {
       isVisible: false,
     }
 
+    // Level completion overlay UI
+    this.levelCompleteOverlay = {
+      container: document.getElementById('level-complete-overlay'),
+      text: document.getElementById('level-complete-text'),
+      _hideTimeout: null,
+      _cleanupTimeout: null,
+      isVisible: false,
+    }
+
     // UI Elements
     this.ui = {
         container: document.getElementById('game-ui'),
@@ -58,6 +67,7 @@ export default class GameManager {
     if (this.ui.container) this.ui.container.style.display = 'block';
 
     this.hideEndBoard();
+    this.hideLevelCompleteOverlay();
 
     this.setLevelOrderFromWorld();
     this.setLevel(startLevelKey);
@@ -105,6 +115,89 @@ export default class GameManager {
     this.timerEl = null;
 
     if (this.ui.container) this.ui.container.style.display = 'none';
+
+    this.hideLevelCompleteOverlay();
+  }
+
+  ensureLevelCompleteOverlayUI() {
+    // Prefer the HTML overlay, but create it dynamically if missing.
+    if (this.levelCompleteOverlay?.container) return
+
+    const container = document.createElement('div')
+    container.id = 'level-complete-overlay'
+    container.className = 'level-complete-overlay'
+    container.style.display = 'none'
+
+    const text = document.createElement('div')
+    text.id = 'level-complete-text'
+    text.className = 'level-complete-text'
+    text.textContent = 'Level Complete'
+    container.appendChild(text)
+
+    document.body.appendChild(container)
+
+    this.levelCompleteOverlay = this.levelCompleteOverlay || {}
+    this.levelCompleteOverlay.container = container
+    this.levelCompleteOverlay.text = text
+    this.levelCompleteOverlay.isVisible = false
+  }
+
+  showLevelCompleteOverlay(message = 'Level Complete') {
+    this.ensureLevelCompleteOverlayUI()
+
+    const el = this.levelCompleteOverlay?.container
+    if (!el) return
+
+    // Cancel any in-progress fade timers.
+    if (this.levelCompleteOverlay._hideTimeout) {
+      clearTimeout(this.levelCompleteOverlay._hideTimeout)
+      this.levelCompleteOverlay._hideTimeout = null
+    }
+    if (this.levelCompleteOverlay._cleanupTimeout) {
+      clearTimeout(this.levelCompleteOverlay._cleanupTimeout)
+      this.levelCompleteOverlay._cleanupTimeout = null
+    }
+
+    if (this.levelCompleteOverlay.text) {
+      this.levelCompleteOverlay.text.textContent = String(message)
+    }
+
+    el.style.display = 'flex'
+    el.classList.remove('visible')
+    this.levelCompleteOverlay.isVisible = true
+
+    // Force style application before adding the class, so the transition runs.
+    requestAnimationFrame(() => {
+      el.classList.add('visible')
+    })
+
+    // Hold briefly, then fade out.
+    this.levelCompleteOverlay._hideTimeout = setTimeout(() => {
+      el.classList.remove('visible')
+      this.levelCompleteOverlay._cleanupTimeout = setTimeout(() => {
+        if (!this.levelCompleteOverlay?.container) return
+        this.levelCompleteOverlay.container.style.display = 'none'
+        this.levelCompleteOverlay.isVisible = false
+      }, 650)
+    }, 3000)
+  }
+
+  hideLevelCompleteOverlay() {
+    const el = this.levelCompleteOverlay?.container
+    if (!el) return
+
+    if (this.levelCompleteOverlay._hideTimeout) {
+      clearTimeout(this.levelCompleteOverlay._hideTimeout)
+      this.levelCompleteOverlay._hideTimeout = null
+    }
+    if (this.levelCompleteOverlay._cleanupTimeout) {
+      clearTimeout(this.levelCompleteOverlay._cleanupTimeout)
+      this.levelCompleteOverlay._cleanupTimeout = null
+    }
+
+    el.classList.remove('visible')
+    el.style.display = 'none'
+    this.levelCompleteOverlay.isVisible = false
   }
 
   showEndBoard({ state, timeStr, kills } = {}) {
@@ -322,6 +415,11 @@ export default class GameManager {
 
     if (cond.isComplete(this)) {
       progress.completed = true;
+      // Show level complete feedback once.
+      if (!progress._shownCompleteOverlay) {
+        progress._shownCompleteOverlay = true;
+        this.showLevelCompleteOverlay('Level Complete')
+      }
     }
   }
 

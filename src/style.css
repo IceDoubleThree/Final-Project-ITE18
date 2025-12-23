@@ -50,6 +50,33 @@ body
     opacity: 0;
 }
 
+/* --- Level Complete Overlay --- */
+.level-complete-overlay {
+    position: fixed;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(0, 0, 0, 0.55);
+    z-index: 2800; /* Above in-game HUD, below main menu (3000) */
+    opacity: 0;
+    transition: opacity 0.6s ease;
+    pointer-events: none;
+}
+
+.level-complete-overlay.visible {
+    opacity: 1;
+}
+
+.level-complete-text {
+    font-family: 'DESIGNER', 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    color: #ffffff;
+    font-size: 64px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    text-align: center;
+}
+
 /* --- Loading Screen Overlay --- */
 .loading-screen {
     position: fixed;
