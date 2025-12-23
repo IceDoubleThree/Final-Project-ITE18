@@ -14,6 +14,7 @@ export default class PhysicsMaterials {
         // 1. Define distinct types of surfaces
         this.materials.default = new CANNON.Material('default')
         this.materials.player = new CANNON.Material('player')
+        this.materials.enemy = new CANNON.Material('enemy')
         this.materials.floor = new CANNON.Material('floor')
         this.materials.ice = new CANNON.Material('ice')
         this.materials.bouncy = new CANNON.Material('bouncy')
@@ -75,11 +76,33 @@ export default class PhysicsMaterials {
             }
         )
 
+        // --- Enemy vs Floor (responsive movement) ---
+        const enemyFloor = new CANNON.ContactMaterial(
+            this.materials.enemy,
+            this.materials.floor,
+            {
+                friction: 0.0,
+                restitution: 0.0
+            }
+        )
+
+        // --- Enemy vs Default ---
+        const enemyDefault = new CANNON.ContactMaterial(
+            this.materials.enemy,
+            this.materials.default,
+            {
+                friction: 0.0,
+                restitution: 0.0
+            }
+        )
+
         // Add rules to the world
         this.physicsWorld.addContactMaterial(playerFloor)
         this.physicsWorld.addContactMaterial(playerDefault)
         this.physicsWorld.addContactMaterial(playerIce)
         this.physicsWorld.addContactMaterial(playerBouncy)
+        this.physicsWorld.addContactMaterial(enemyFloor)
+        this.physicsWorld.addContactMaterial(enemyDefault)
         this.physicsWorld.addContactMaterial(defaultContact)
     }
 }

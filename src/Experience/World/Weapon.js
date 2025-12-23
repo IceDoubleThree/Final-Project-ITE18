@@ -2,6 +2,10 @@ export default class Weapon {
     constructor(name, options = {}) {
         this.name = name
         this.damage = options.damage || 10
+        // Damage multiplier used by Player: damage = player.attack * weaponMultiplier
+        this.damageMultiplier = Number.isFinite(options.damageMultiplier)
+            ? options.damageMultiplier
+            : (Number.isFinite(options.multiplier) ? options.multiplier : null)
         this.range = options.range || 100
 
         // Cooldown between shots (ms). Back-compat: options.fireRate is treated as seconds.

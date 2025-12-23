@@ -619,6 +619,7 @@ export default class World {
       physicsBodies: [],
       disposables: [],
       npcs: [],
+      enemies: [],
       portals: [],
       updates: [],
       cameraBounds: null,
@@ -680,6 +681,18 @@ export default class World {
         if (npc.mesh?.geometry) npc.mesh.geometry.dispose();
         if (npc.mesh?.material) npc.mesh.material.dispose();
         if (npc.body) this.physicsWorld.removeBody(npc.body);
+      });
+    }
+
+    if (loc.enemies) {
+      loc.enemies.forEach((enemy) => {
+        if (enemy?.destroy) enemy.destroy();
+        else {
+          if (enemy?.mesh && enemy.mesh.parent) enemy.mesh.parent.remove(enemy.mesh);
+          if (enemy?.mesh?.geometry) enemy.mesh.geometry.dispose();
+          if (enemy?.mesh?.material) enemy.mesh.material.dispose();
+          if (enemy?.body) this.physicsWorld.removeBody(enemy.body);
+        }
       });
     }
 
@@ -747,6 +760,11 @@ export default class World {
     // 4. Update NPCs
     if (this.currentLocation && this.currentLocation.npcs) {
       this.currentLocation.npcs.forEach((npc) => npc.update());
+    }
+
+    // 4.5 Update Enemies
+    if (this.currentLocation && this.currentLocation.enemies) {
+      this.currentLocation.enemies.forEach((enemy) => enemy.update());
     }
 
     // 5. Update Physics Debugger

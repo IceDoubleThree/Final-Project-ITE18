@@ -572,6 +572,63 @@ body
     font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
 }
 
+/* End-of-run Stats Board */
+.game-end-board {
+    position: fixed;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 10000;
+    background: rgba(0, 0, 0, 0.55);
+}
+
+.game-end-board-content {
+    min-width: 320px;
+    max-width: 520px;
+    padding: 18px 20px;
+    border-radius: 12px;
+    background: rgba(0, 0, 0, 0.78);
+    color: #fff;
+    font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+    text-align: center;
+}
+
+.game-end-board-title {
+    font-size: 22px;
+    font-weight: 700;
+    margin-bottom: 12px;
+}
+
+.game-end-board-stats {
+    display: grid;
+    gap: 10px;
+    margin: 12px 0 14px;
+}
+
+.game-end-board-row {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 8px 10px;
+    background: rgba(255, 255, 255, 0.06);
+    border-radius: 10px;
+}
+
+.game-end-board-label {
+    opacity: 0.9;
+}
+
+.game-end-board-value {
+    font-family: monospace;
+    font-weight: 700;
+}
+
+.game-end-board-hint {
+    opacity: 0.85;
+    font-size: 13px;
+}
+
 /* Top Left: Stats */
 .hud-stats-container {
     position: absolute;
@@ -628,6 +685,14 @@ body
     font-weight: 600;
     text-shadow: 1px 1px 2px rgba(0,0,0,0.8);
     padding-left: 34px; /* Align with bar start */
+}
+
+.hud-level-kills {
+    padding-left: 34px;
+    font-size: 14px;
+    color: rgba(255, 255, 255, 0.9);
+    font-weight: 700;
+    text-shadow: 1px 1px 2px rgba(0,0,0,0.8);
 }
 
 .hud-stat-divider {
@@ -754,11 +819,11 @@ body
     position: absolute;
     top: 50%;
     left: 50%;
-    width: 10px;
-    height: 10px;
-    background-color: rgba(255, 255, 255, 0.8);
-    border: 1px solid black;
-    border-radius: 50%;
+    width: 32px;
+    height: 32px;
+    background: transparent url('./textures/crosshair.png') center / contain no-repeat;
+    border: none;
+    border-radius: 0;
     transform: translate(-50%, -50%);
 }
 
@@ -821,11 +886,11 @@ body
     position: absolute;
     top: 50%;
     left: 50%;
-    width: 10px;
-    height: 10px;
-    background-color: rgba(255, 255, 255, 0.8);
-    border: 1px solid black;
-    border-radius: 50%;
+    width: 32px;
+    height: 32px;
+    background: transparent url('./textures/crosshair.png') center / contain no-repeat;
+    border: none;
+    border-radius: 0;
     transform: translate(-50%, -50%);
 }
 

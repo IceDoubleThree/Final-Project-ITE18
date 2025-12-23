@@ -45,6 +45,9 @@ export default class NPC {
         const material = new THREE.MeshStandardMaterial({ color: this.color })
 
         this.mesh = new THREE.Mesh(geometry, material)
+        this.mesh.userData = this.mesh.userData || {}
+        this.mesh.userData.type = 'npc'
+        this.mesh.userData.npc = this
         this.mesh.castShadow = true
         this.mesh.position.copy(this.initialPosition)
         this.mesh.position.y += 0.8

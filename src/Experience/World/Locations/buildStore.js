@@ -3,12 +3,57 @@ import * as CANNON from "cannon-es";
 import Portal from "../Portal.js";
 
 export default function buildStore(state) {
+  const input = this.experience?.input;
+  const player = this.experience?.world?.player;
+  const dialogue = this.experience?.dialogue;
+
   const resource = this.resources.items.storeModel;
   if (resource?.scene) {
     const model = resource.scene;
     model.scale.set(1, 1, 1);
     model.position.copy(state.origin);
     state.group.add(model);
+  }
+
+  // --- DEBUG: Spawn a simple enemy target in Store ---
+  // Spec: in debug mode, add a cylinder at (22, 0, 7) with 10 health.
+  let dummyEnemyMesh = null;
+  let dummyPromptEl = null;
+  let _wasInteractHeld = false;
+  const dummyInteractionRadius = 2.5;
+
+  if (this.debug?.active) {
+    const enemyPos = new THREE.Vector3(
+      state.origin.x + 22,
+      state.origin.y + 0,
+      state.origin.z + 7
+    );
+
+    const geometry = new THREE.CylinderGeometry(0.6, 0.6, 2.2, 16);
+    const material = new THREE.MeshStandardMaterial({ color: 0xffffff });
+    const enemyMesh = new THREE.Mesh(geometry, material);
+    enemyMesh.name = 'placeholder enemy - dummy';
+    enemyMesh.position.copy(enemyPos);
+    enemyMesh.position.y += 1.1;
+    enemyMesh.castShadow = true;
+    enemyMesh.receiveShadow = true;
+    enemyMesh.userData = enemyMesh.userData || {};
+    enemyMesh.userData.type = 'enemy';
+    enemyMesh.userData.name = 'dummy';
+    enemyMesh.userData.maxHp = 10;
+    enemyMesh.userData.hp = 10;
+
+    state.group.add(enemyMesh);
+    dummyEnemyMesh = enemyMesh;
+
+    // Interaction prompt UI (reuse the same CSS/class as NPC prompts)
+    dummyPromptEl = document.createElement('div');
+    dummyPromptEl.classList.add('interact-prompt');
+    dummyPromptEl.innerHTML = `
+      <span class="key-icon">F</span>
+      <span>Reload dummy</span>
+    `;
+    document.body.appendChild(dummyPromptEl);
   }
 
   // Notice marker (3D exclamation mark) to locate the game starter warp
@@ -90,5 +135,66 @@ export default function buildStore(state) {
   this.physicsWorld.addBody(floorBody);
   state.physicsBodies.push(floorBody);
 
-  return { update: () => state.portals.forEach((p) => p.update()) };
+  return {
+    update: () => {
+      state.portals.forEach((p) => p.update());
+
+      // Debug-only interaction with the dummy enemy.
+      if (!this.debug?.active) return;
+      if (!dummyEnemyMesh || !input?.keys || !player?.mesh) return;
+
+      // Prompt visibility
+      if (dummyPromptEl) {
+        const dialogueBusy = !!dialogue?.isActive?.();
+        const pPos = player.mesh.position;
+        const ePos = dummyEnemyMesh.position;
+        const dx = pPos.x - ePos.x;
+        const dz = pPos.z - ePos.z;
+        const dist = Math.sqrt(dx * dx + dz * dz);
+
+        if (!dialogueBusy && dist <= dummyInteractionRadius) {
+          dummyPromptEl.classList.add('visible');
+        } else {
+          dummyPromptEl.classList.remove('visible');
+        }
+      }
+
+      const isHeld = !!input.keys.interact;
+      const pressed = isHeld && !_wasInteractHeld;
+      _wasInteractHeld = isHeld;
+
+      if (!pressed) return;
+
+      const pPos = player.mesh.position;
+      const ePos = dummyEnemyMesh.position;
+      const dx = pPos.x - ePos.x;
+      const dz = pPos.z - ePos.z;
+      const dist = Math.sqrt(dx * dx + dz * dz);
+
+      if (dist <= dummyInteractionRadius) {
+        const ud = dummyEnemyMesh.userData || {};
+        console.log('🧪 Dummy enemy interacted:', {
+          name: ud.name ?? 'dummy',
+          type: ud.type ?? 'enemy',
+          hp: ud.hp,
+          maxHp: ud.maxHp,
+          dead: !!ud.dead,
+          position: { x: ePos.x, y: ePos.y, z: ePos.z },
+        });
+
+        // "Reload" dummy: reset HP + revive/show it.
+        const maxHp = Number.isFinite(ud.maxHp) ? ud.maxHp : 10;
+        ud.maxHp = maxHp;
+        ud.hp = maxHp;
+        ud.dead = false;
+        dummyEnemyMesh.visible = true;
+        console.log('🔄 Dummy reloaded:', { hp: ud.hp, maxHp: ud.maxHp });
+      }
+    },
+    cleanup: () => {
+      if (dummyPromptEl && dummyPromptEl.remove) dummyPromptEl.remove();
+      dummyPromptEl = null;
+      dummyEnemyMesh = null;
+    },
+  };
 }

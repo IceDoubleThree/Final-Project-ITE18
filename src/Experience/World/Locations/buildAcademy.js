@@ -1,7 +1,62 @@
 import * as THREE from "three";
 import * as CANNON from "cannon-es";
+import Portal from "../Portal.js";
+import Enemy, { EnemyTypes } from "../Enemy.js";
 
 export default function buildAcademy(state) {
+  // Enemy spawn locations (data only; spawning mechanics added later)
+  // Coordinates are relative to the Academy origin.
+  state.enemySpawnPoints = [
+    new THREE.Vector3(state.origin.x + 37, state.origin.y + 0, state.origin.z + 52),
+    new THREE.Vector3(state.origin.x + -44, state.origin.y + 0, state.origin.z + 55),
+    new THREE.Vector3(state.origin.x + -47, state.origin.y + 0, state.origin.z + 12),
+    new THREE.Vector3(state.origin.x + -47, state.origin.y + 0, state.origin.z + 40),
+    new THREE.Vector3(state.origin.x + 36, state.origin.y + 0, state.origin.z + -61),
+  ];
+
+  // Level 1 mechanics (Academy): spawn walkers/runners until level condition is met.
+  const spawnPoints = state.enemySpawnPoints || [];
+  let initialWaveSpawned = false;
+  let nextSpawnIndex = 0;
+  let nextTypeIsRunner = false;
+  let warpUnlocked = false;
+
+  // Respawn pacing (lower = faster). Spawns at most 1 enemy per interval.
+  const spawnIntervalMs = 200;
+  let nextSpawnTimeMs = 0;
+
+  const spawnEnemyAt = (pos) => {
+    const enemy = nextTypeIsRunner
+      ? Enemy.createRunner(this, pos)
+      : Enemy.createWalker(this, pos);
+    nextTypeIsRunner = !nextTypeIsRunner;
+    if (enemy) state.enemies.push(enemy);
+  };
+
+  const unlockNextLevelWarp = () => {
+    if (warpUnlocked) return;
+    warpUnlocked = true;
+
+    const warpPos = new THREE.Vector3(
+      state.origin.x + 0,
+      state.origin.y + 0,
+      state.origin.z + -64
+    );
+
+    state.portals.push(
+      new Portal(this, warpPos, null, "Next Level", 0xffffff, {
+        size: new THREE.Vector3(2, 2.5, 2),
+        interactionRadius: 2,
+        options: [
+          {
+            label: "Next Level",
+            onSelect: () => console.log("Next level not implemented yet."),
+          },
+        ],
+      })
+    );
+  };
+
   // Ground plane (Academy)
   // Academy model's plane was removed; we render a new textured ground here.
   {
@@ -108,7 +163,7 @@ export default function buildAcademy(state) {
         const pickAlong = (min, max) => min + Math.random() * (max - min);
 
         const clusterPositions = [];
-        const totalClusters = 50;
+        const totalClusters = 30;
 
         // Spawn on the square perimeter (random side each time)
         for (let i = 0; i < totalClusters; i++) {
@@ -272,5 +327,56 @@ export default function buildAcademy(state) {
   this.physicsWorld.addBody(floorBody);
   state.physicsBodies.push(floorBody);
 
-  return { update: () => state.portals.forEach((p) => p.update()) };
+  return {
+    update: () => {
+      state.portals.forEach((p) => p.update());
+
+      const game = this.experience?.game;
+      if (!game?.active) return;
+      if (game.currentLevelKey !== 'Academy') return;
+
+      const nowMs = this.experience?.time?.elapsed ?? 0;
+
+      const levelComplete = typeof game.isLevelComplete === 'function'
+        ? game.isLevelComplete('Academy')
+        : false;
+
+      if (levelComplete) {
+        // Stop level mechanics: remove enemies and unlock the next warp.
+        if (state.enemies && state.enemies.length) {
+          state.enemies.forEach((e) => e?.destroy?.());
+          state.enemies.length = 0;
+        }
+        unlockNextLevelWarp();
+        return;
+      }
+
+      // Cleanup dead enemies from the list
+      if (state.enemies && state.enemies.length) {
+        state.enemies = state.enemies.filter((e) => e && !e.dead);
+      }
+
+      // Spawn initial wave: both walkers and runners across spawn points
+      if (!initialWaveSpawned) {
+        spawnPoints.forEach((p) => {
+          // One walker and one runner per spawn point
+          state.enemies.push(new Enemy(this, { type: EnemyTypes.WALKER, position: p }));
+          state.enemies.push(new Enemy(this, { type: EnemyTypes.RUNNER, position: p }));
+        });
+        initialWaveSpawned = true;
+        return;
+      }
+
+      // Maintain a steady number of enemies until the level completes.
+      const desiredAlive = spawnPoints.length * 2;
+      if (state.enemies.length < desiredAlive && spawnPoints.length > 0) {
+        if (nowMs >= nextSpawnTimeMs) {
+          nextSpawnTimeMs = nowMs + spawnIntervalMs;
+          const p = spawnPoints[nextSpawnIndex % spawnPoints.length];
+          nextSpawnIndex++;
+          spawnEnemyAt(p);
+        }
+      }
+    },
+  };
 }

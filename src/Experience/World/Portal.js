@@ -199,6 +199,9 @@ export default class Portal {
         // Close UI first to avoid overlapping with location load
         this.closeMenu()
 
+        // Prevent double-triggering while a location swap is in progress.
+        this.isActive = false
+
         if (typeof opt.onSelect === 'function') {
             opt.onSelect()
             return
@@ -207,7 +210,6 @@ export default class Portal {
         const destination = opt.destinationKey || this.destinationKey
         if (destination) {
             console.log(`🚪 Teleporting to ${destination}`)
-            this.isActive = false
             this.world.loadLocation(destination)
         }
     }
@@ -267,6 +269,10 @@ export default class Portal {
     }
 
     destroy() {
+        if (Portal.activeMenuPortal === this) {
+            Portal.activeMenuPortal = null
+        }
+
         if (this.prompt) {
             this.prompt.remove()
         }

@@ -41,9 +41,12 @@ export default class Player {
         // --- WEAPON SYSTEM ---
         this.weapons = {
             pistol: new Weapon('Pistol', {
-                damage: 20,
+                // Damage = player.attack * weapon multiplier
+                damageMultiplier: 1,
+                // Back-compat: older code may still look at `weapon.damage`
+                damage: 1,
                 range: 50,
-                cooldown: 0.5,
+                cooldown: 0.2,
                 ammo_size: 20,
                 reloading_time: 5
             })
@@ -65,6 +68,19 @@ export default class Player {
         this._gunAimHoldUntilMs = 0
         this._gunAimOneShotTimeScale = 2
         this._gunAimOneShotHoldMs = 1000
+
+        // Shooting raycast (camera-based)
+        this._shootRaycaster = new THREE.Raycaster()
+        this._shootRayOrigin = new THREE.Vector3()
+        this._shootRayDirection = new THREE.Vector3()
+        this._shootRayEnd = new THREE.Vector3()
+        this._shootRayTmp = new THREE.Vector3()
+
+        // Debug: visualize the shooting ray
+        this._shootDebug = {
+            line: null,
+            maxDistance: 60,
+        }
 
         // --- GAME STATS (for future mechanics) ---
         this.baseHp = 100
@@ -145,7 +161,169 @@ export default class Player {
 
     shoot() {
         if (!this.currentWeapon) return false
-        return this.currentWeapon.requestFire(this.time.elapsed)
+
+        const nowMs = this.time?.elapsed ?? 0
+        const fired = this.currentWeapon.requestFire(nowMs)
+        if (fired) this._fireCameraRay(nowMs)
+        return fired
+    }
+
+    _ensureShootDebugLine() {
+        if (!this.debug?.active) return
+        if (this._shootDebug.line) return
+
+        const geometry = new THREE.BufferGeometry().setFromPoints([
+            new THREE.Vector3(0, 0, 0),
+            new THREE.Vector3(0, 0, -1),
+        ])
+
+        const material = new THREE.LineBasicMaterial({
+            color: 0xff0000,
+            transparent: true,
+            opacity: 0.9,
+            depthTest: false,
+            depthWrite: false,
+        })
+
+        const line = new THREE.Line(geometry, material)
+        line.name = 'player-shoot-ray-debug'
+        line.renderOrder = 999999
+        line.visible = false
+        this.scene.add(line)
+        this._shootDebug.line = line
+    }
+
+    _getCameraShootRay(maxDistance) {
+        const camera = this.experience?.camera?.instance
+        if (!camera) return null
+
+        camera.getWorldPosition(this._shootRayOrigin)
+        camera.getWorldDirection(this._shootRayDirection)
+        this._shootRayDirection.normalize()
+
+        const dist = Number.isFinite(maxDistance) ? maxDistance : 50
+        this._shootRayEnd.copy(this._shootRayOrigin).add(this._shootRayTmp.copy(this._shootRayDirection).multiplyScalar(dist))
+
+        return {
+            origin: this._shootRayOrigin,
+            direction: this._shootRayDirection,
+            end: this._shootRayEnd,
+            maxDistance: dist,
+        }
+    }
+
+    _isDescendantOfPlayerMesh(object3d) {
+        if (!this.mesh || !object3d) return false
+        let obj = object3d
+        while (obj) {
+            if (obj === this.mesh) return true
+            obj = obj.parent
+        }
+        return false
+    }
+
+    _findDamageableObject(hitObject) {
+        // Walk up parents to find an object that declares hp in userData.
+        let obj = hitObject
+        while (obj) {
+            const ud = obj.userData
+            if (ud && Number.isFinite(ud.hp)) return obj
+            obj = obj.parent
+        }
+        return null
+    }
+
+    _applyDamageToObject(targetObject, damageAmount) {
+        const ud = targetObject?.userData
+        if (!ud) return false
+
+        // Prefer delegating to Enemy instances (keeps behavior logic in Enemy.js)
+        const enemy = ud.enemy
+        if (enemy && typeof enemy.takeDamage === 'function') {
+            enemy.takeDamage(damageAmount, this.time?.elapsed ?? 0)
+            return true
+        }
+
+        if (!Number.isFinite(ud.hp)) return false
+
+        const dmg = Number.isFinite(damageAmount) ? damageAmount : 0
+        if (dmg <= 0) return false
+
+        ud.hp = Math.max(0, ud.hp - dmg)
+
+        if (this.debug?.active) {
+            const maxHp = Number.isFinite(ud.maxHp) ? ud.maxHp : null
+            const hpText = maxHp != null ? `${ud.hp}/${maxHp}` : `${ud.hp}`
+            console.log(`🩸 Damage ${dmg} -> ${targetObject.name || 'target'} HP: ${hpText}`)
+        }
+
+        if (ud.hp <= 0) {
+            ud.dead = true
+            targetObject.visible = false
+
+            // If the real run is active, count it as a kill.
+            this.experience?.game?.addKill?.(1)
+        }
+
+        return true
+    }
+
+    _fireCameraRay(nowMs) {
+        const weaponRange = Number.isFinite(this.currentWeapon?.range) ? this.currentWeapon.range : 50
+        const ray = this._getCameraShootRay(weaponRange)
+        if (!ray) return null
+
+        this._shootRaycaster.near = 0.01
+        this._shootRaycaster.far = ray.maxDistance
+        this._shootRaycaster.set(ray.origin, ray.direction)
+
+        // Intersect everything in the scene (recursive). We will filter out player + collider helpers.
+        const hits = this._shootRaycaster.intersectObjects(this.scene.children, true)
+
+        let firstValidHit = null
+        for (const hit of hits) {
+            const obj = hit?.object
+            if (!obj) continue
+            if (this._isDescendantOfPlayerMesh(obj)) continue
+
+            // Ignore debug helpers / lines (these otherwise block hits in #debug mode)
+            if (obj.isLine || obj.isLineSegments || obj.type === 'Line' || obj.type === 'LineSegments') continue
+
+            const nameLower = (obj.name || '').toLowerCase()
+            // Ignore authoring colliders/physics helpers (they're often hidden anyway)
+            if (nameLower.endsWith('_collider')) continue
+            if (nameLower.startsWith('physics_cube') || nameLower.startsWith('physics_cylinder')) continue
+            if (nameLower === 'player-shoot-ray-debug') continue
+
+            firstValidHit = hit
+            break
+        }
+
+        if (firstValidHit) {
+            const obj = firstValidHit.object
+            const hitName = obj?.name || obj?.parent?.name || 'unnamed'
+            console.log(`🎯 Hit: ${hitName} @ ${Math.round((firstValidHit.distance || 0) * 100) / 100}m`)
+
+            // Damage hook: if hit object (or a parent) has userData.hp, apply weapon damage.
+            const damageable = this._findDamageableObject(obj)
+            if (damageable) {
+                // Damage = player base atk * weapon multiplier
+                const baseAtk = Number.isFinite(this.attack) ? this.attack : (Number.isFinite(this.baseAttack) ? this.baseAttack : 1)
+                const weaponMultiplier =
+                    (Number.isFinite(this.currentWeapon?.damageMultiplier) ? this.currentWeapon.damageMultiplier : null) ??
+                    (Number.isFinite(this.currentWeapon?.multiplier) ? this.currentWeapon.multiplier : null) ??
+                    // Back-compat: treat weapon.damage as multiplier if no dedicated multiplier exists.
+                    (Number.isFinite(this.currentWeapon?.damage) ? this.currentWeapon.damage : 1)
+
+                const dmg = Math.max(0, baseAtk * weaponMultiplier)
+                this._applyDamageToObject(damageable, dmg)
+            }
+        } else {
+            // Optional: log miss during debug
+            // console.log('🎯 Miss')
+        }
+
+        return firstValidHit
     }
 
     updateWeaponHud() {
@@ -179,6 +357,28 @@ export default class Player {
         this.hp = this.baseHp
         this.attack = this.baseAttack
         this.defense = this.baseDefense
+    }
+
+    takeDamage(amount, { source = null } = {}) {
+        const dmgIn = Number.isFinite(amount) ? amount : 0
+        if (dmgIn <= 0) return 0
+
+        const def = Number.isFinite(this.defense) ? this.defense : 0
+        const dmg = Math.max(0, dmgIn - def)
+        if (dmg <= 0) return 0
+
+        this.hp = Math.max(0, (Number.isFinite(this.hp) ? this.hp : 0) - dmg)
+
+        if (this.debug?.active) {
+            console.log('💥 Player took damage:', { dmg, source, hp: this.hp, def })
+        }
+
+        // Only end the run if the game is active
+        if (this.hp <= 0 && this.experience?.game?.active) {
+            this.experience.game.game_end('dead')
+        }
+
+        return dmg
     }
 
     setupDebug() {
@@ -733,7 +933,8 @@ export default class Player {
         // --- WEAPON INPUT ---
         if (this.currentWeapon) {
             // Process weapon timers (reload completion + buffered shots)
-            this.currentWeapon.update(nowMs)
+            const firedFromBuffer = this.currentWeapon.update(nowMs)
+            if (firedFromBuffer) this._fireCameraRay(nowMs)
 
             // Right click ONLY: aim mode (camera zoom/offset + reduced movement speed)
             if (this.input.keys.aim !== this.isAiming) {
@@ -772,7 +973,8 @@ export default class Player {
             if (shootStarted) {
                 this.shoot() // buffered requestFire
             } else if (isShooting) {
-                this.currentWeapon.tryFireHeld(nowMs)
+                const firedHeld = this.currentWeapon.tryFireHeld(nowMs)
+                if (firedHeld) this._fireCameraRay(nowMs)
             }
 
             this._wasShooting = isShooting
@@ -787,6 +989,26 @@ export default class Player {
         }
 
         this.updateWeaponHud()
+
+        // --- DEBUG: Shooting ray visualization ---
+        if (this.debug?.active) {
+            this._ensureShootDebugLine()
+            const dist = Math.max(
+                1,
+                Number.isFinite(this.currentWeapon?.range)
+                    ? this.currentWeapon.range
+                    : (Number.isFinite(this._shootDebug.maxDistance) ? this._shootDebug.maxDistance : 60)
+            )
+
+            const ray = this.currentWeapon ? this._getCameraShootRay(dist) : null
+            if (this._shootDebug.line && ray) {
+                const pts = [ray.origin.clone(), ray.end.clone()]
+                this._shootDebug.line.geometry.setFromPoints(pts)
+                this._shootDebug.line.visible = true
+            } else if (this._shootDebug.line) {
+                this._shootDebug.line.visible = false
+            }
+        }
 
         // --- NEW: Stop movement if Dialogue is open ---
         if (this.experience.dialogue.isActive()) {

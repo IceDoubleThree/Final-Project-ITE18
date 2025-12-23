@@ -93,6 +93,24 @@
         </div>
     </div>
 
+    <!-- End-of-run Stats Board (shown when game_end() triggers) -->
+    <div id="game-end-board" class="game-end-board" style="display: none;">
+        <div class="game-end-board-content">
+            <div id="game-end-title" class="game-end-board-title">Run Complete</div>
+            <div class="game-end-board-stats">
+                <div class="game-end-board-row">
+                    <span class="game-end-board-label">Time</span>
+                    <span id="game-end-time" class="game-end-board-value">00:00</span>
+                </div>
+                <div class="game-end-board-row">
+                    <span class="game-end-board-label">Enemies Killed</span>
+                    <span id="game-end-kills" class="game-end-board-value">0</span>
+                </div>
+            </div>
+            <div class="game-end-board-hint">Press Enter to return to Lobby</div>
+        </div>
+    </div>
+
     <!-- NEW: Game HUD (Heads Up Display) -->
     <div id="game-ui" class="game-ui" style="display: none;">
         <div class="crosshair"></div>
@@ -110,6 +128,7 @@
                 <span class="hud-stat-divider">|</span>
                 <span id="hud-stat-def">DEF: 0</span>
             </div>
+            <div id="hud-level-kills" class="hud-level-kills" style="display: none;">Kills: 0/20</div>
         </div>
 
         <!-- Bottom Left: Weapon Selector -->
