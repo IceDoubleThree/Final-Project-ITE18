@@ -12,7 +12,8 @@ export default class Input extends EventEmitter {
             right: false,
             jump: false,
             shift: false,
-            interact: false, // New key
+            interact: false,
+            reload: false, 
             shoot: false,
             aim: false
         }
@@ -38,7 +39,7 @@ export default class Input extends EventEmitter {
     mouseDown(event) {
         if (document.pointerLockElement !== document.querySelector('canvas.webgl')) return
 
-        switch(event.button) {
+        switch (event.button) {
             case 0: // Left Click
                 this.keys.shoot = true
                 this.trigger('shoot')
@@ -51,7 +52,7 @@ export default class Input extends EventEmitter {
     }
 
     mouseUp(event) {
-        switch(event.button) {
+        switch (event.button) {
             case 0: // Left Click
                 this.keys.shoot = false
                 break
@@ -64,8 +65,8 @@ export default class Input extends EventEmitter {
 
     keyDown(event) {
         // console.log('Key Down:', event.code) 
-        
-        switch(event.code) {
+
+        switch (event.code) {
             case 'ArrowUp':
             case 'KeyW':
                 this.keys.forward = true
@@ -92,30 +93,39 @@ export default class Input extends EventEmitter {
                 break
 
             case 'Space':
-                if(this.keys.jump === false) {
+                if (this.keys.jump === false) {
                     this.keys.jump = true
                     console.log('Input: Space pressed -> triggering jump')
                     this.trigger('jump')
                 }
                 break
-            
+
             case 'ShiftLeft':
             case 'ShiftRight':
                 this.keys.shift = true
                 break
 
-           case 'KeyF':
-            console.log('F Key detected in Input.js') 
-            if(this.keys.interact === false) {
-                this.keys.interact = true
-                this.trigger('interact')
-            }
-            break
+            case 'KeyF':
+                console.log('F Key detected in Input.js')
+                if (this.keys.interact === false) {
+                    this.keys.interact = true
+                    this.trigger('interact')
+                }
+                break
+
+            //Reload Key
+            case 'KeyR':
+                if (this.keys.reload === false) {
+                    this.keys.reload = true
+                    console.log('Input: R pressed -> triggering reload')
+                    this.trigger('reload')
+                }
+                break
         }
     }
 
     keyUp(event) {
-        switch(event.code) {
+        switch (event.code) {
             case 'ArrowUp':
             case 'KeyW':
                 this.keys.forward = false
@@ -135,7 +145,7 @@ export default class Input extends EventEmitter {
             case 'KeyD':
                 this.keys.right = false
                 break
-            
+
             case 'Space':
                 this.keys.jump = false
                 break
@@ -145,11 +155,14 @@ export default class Input extends EventEmitter {
                 this.keys.shift = false
                 break
 
-            // --- NEW: Interaction Key ---
             case 'KeyF':
                 this.keys.interact = false
                 break
-            
+
+            case 'KeyR':
+                this.keys.reload = false
+                break
+
             case 'Digit1':
                 this.trigger('slot1')
                 break
@@ -161,7 +174,7 @@ export default class Input extends EventEmitter {
                 break
         }
     }
-    
+
     destroy() {
         window.removeEventListener('keydown')
         window.removeEventListener('keyup')
