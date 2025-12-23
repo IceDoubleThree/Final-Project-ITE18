@@ -11,7 +11,10 @@ export default class Input extends EventEmitter {
             left: false,
             right: false,
             jump: false,
-            shift: false
+            shift: false,
+            interact: false, // New key
+            shoot: false,
+            aim: false
         }
 
         // Listen to DOM events
@@ -22,18 +25,51 @@ export default class Input extends EventEmitter {
         window.addEventListener('keyup', (event) => {
             this.keyUp(event)
         })
+
+        window.addEventListener('mousedown', (event) => {
+            this.mouseDown(event)
+        })
+
+        window.addEventListener('mouseup', (event) => {
+            this.mouseUp(event)
+        })
+    }
+
+    mouseDown(event) {
+        if (document.pointerLockElement !== document.querySelector('canvas.webgl')) return
+
+        switch(event.button) {
+            case 0: // Left Click
+                this.keys.shoot = true
+                this.trigger('shoot')
+                break
+            case 2: // Right Click
+                this.keys.aim = true
+                this.trigger('aimStart')
+                break
+        }
+    }
+
+    mouseUp(event) {
+        switch(event.button) {
+            case 0: // Left Click
+                this.keys.shoot = false
+                break
+            case 2: // Right Click
+                this.keys.aim = false
+                this.trigger('aimEnd')
+                break
+        }
     }
 
     keyDown(event) {
-        // --- DEBUG LOG START ---
-        console.log('Key Down:', event.code) 
-        // --- DEBUG LOG END ---
+        // console.log('Key Down:', event.code) 
         
         switch(event.code) {
             case 'ArrowUp':
             case 'KeyW':
                 this.keys.forward = true
-                this.trigger('forwardStart') // Signal that movement started
+                this.trigger('forwardStart')
                 break
 
             case 'ArrowLeft':
@@ -51,11 +87,15 @@ export default class Input extends EventEmitter {
                 this.keys.right = true
                 break
 
+            case 'Escape':
+                this.trigger('pause')
+                break
+
             case 'Space':
-                // Only trigger jump once per press (prevent holding space to fly)
                 if(this.keys.jump === false) {
                     this.keys.jump = true
-                    this.trigger('jump') // Signal to jump
+                    console.log('Input: Space pressed -> triggering jump')
+                    this.trigger('jump')
                 }
                 break
             
@@ -63,6 +103,14 @@ export default class Input extends EventEmitter {
             case 'ShiftRight':
                 this.keys.shift = true
                 break
+
+           case 'KeyF':
+            console.log('F Key detected in Input.js') 
+            if(this.keys.interact === false) {
+                this.keys.interact = true
+                this.trigger('interact')
+            }
+            break
         }
     }
 
@@ -96,13 +144,29 @@ export default class Input extends EventEmitter {
             case 'ShiftRight':
                 this.keys.shift = false
                 break
+
+            // --- NEW: Interaction Key ---
+            case 'KeyF':
+                this.keys.interact = false
+                break
+            
+            case 'Digit1':
+                this.trigger('slot1')
+                break
+            case 'Digit2':
+                this.trigger('slot2')
+                break
+            case 'Digit3':
+                this.trigger('slot3')
+                break
         }
     }
     
     destroy() {
-        // Clean up event listeners
         window.removeEventListener('keydown')
         window.removeEventListener('keyup')
-        this.off() // Clears all EventEmitter callbacks
+        window.removeEventListener('mousedown')
+        window.removeEventListener('mouseup')
+        this.off()
     }
 }

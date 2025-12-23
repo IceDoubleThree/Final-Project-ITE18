@@ -1,13 +1,203 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Activity 4.3 - Code Structuring for Bigger Projects - Rabago</title>
+    <title>Academy of Spent Shells</title>
     <link rel="stylesheet" href="./style.css">
 </head>
+
 <body>
+    <!-- Loading Screen Overlay (blocks input until assets are ready) -->
+    <div id="loading-screen" class="loading-screen">
+        <div class="loading-center">
+            <div class="loading-title">Loading</div>
+            <div class="loading-warning">...</div>
+            <div class="loading-bar" aria-label="Loading progress">
+                <div id="loading-bar-fill" class="loading-bar-fill" style="width: 0%"></div>
+            </div>
+            <div id="loading-percent" class="loading-percent">0%</div>
+        </div>
+        <div id="loading-status" class="loading-status">Preparing assets…</div>
+    </div>
+
+    <!-- Main Menu Overlay -->
+    <div id="main-menu" class="main-menu">
+        <div class="main-menu-header">
+            <div class="main-menu-title">Academy of Spent Shells</div>
+            <div class="main-menu-subtitle">Development Build V.2</div>
+        </div>
+
+        <div class="main-menu-right">
+            <!-- Main Buttons -->
+            <div id="main-menu-buttons" class="main-menu-buttons">
+                <button id="btn-start-game" class="menu-button primary">Start Game</button>
+                <button id="btn-settings" class="menu-button">Settings</button>
+                <button id="btn-help" class="menu-button">Help</button>
+                <button id="btn-credits" class="menu-button">Credits</button>
+            </div>
+
+            <!-- Sub Menu Container (Hidden by default) -->
+            <div id="sub-menu-container" class="main-menu-buttons" style="display: none;">
+                <div id="content-settings" class="menu-content-section" style="display: none;">
+                    <h3>Settings</h3>
+                    <div class="setting-item">
+                        <label for="setting-shadows">Enable Shadows</label>
+                        <input type="checkbox" id="setting-shadows">
+                    </div>
+                    <div class="setting-item">
+                        <label for="setting-mute-music">Mute Music</label>
+                        <input type="checkbox" id="setting-mute-music">
+                    </div>
+                </div>
+
+                <div id="content-help" class="menu-content-section" style="display: none;">
+                    <h3>Help</h3>
+                    <p>WASD to move<br>Shift to run<br>Space to jump<br>Esc to pause</p>
+                </div>
+
+                <div id="content-credits" class="menu-content-section" style="display: none;">
+                    <h3>Credits</h3>
+                    <p>Development Build</p>
+                </div>
+
+                <button id="btn-back-main" class="menu-button">Back</button>
+            </div>
+        </div>
+
+        <!-- Bottom-left quick toggle -->
+        <button id="btn-mute" class="menu-button mute-button" type="button">Mute</button>
+    </div>
+
+    <!-- Credits Overlay (click anywhere to exit) -->
+    <div id="credits-overlay" class="credits-overlay" style="display: none;">
+        <div id="credits-roll" class="credits-roll" aria-label="Credits">
+            <div class="credits-title">Credits</div>
+            <div class="credits-block">
+                <div class="credits-role">Game</div>
+                <div class="credits-name">My game</div>
+            </div>
+            <div class="credits-block">
+                <div class="credits-role">Development</div>
+                <div class="credits-name">(Add names here)</div>
+            </div>
+            <div class="credits-block">
+                <div class="credits-role">Design</div>
+                <div class="credits-name">(Add names here)</div>
+            </div>
+            <div class="credits-block">
+                <div class="credits-role">Assets & Tools</div>
+                <div class="credits-name">(Add sources here)</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- NEW: Black Screen Overlay -->
+    <div id="black-screen" class="black-screen"></div>
+
+    <!-- Level Complete Overlay -->
+    <div id="level-complete-overlay" class="level-complete-overlay" style="display: none;" aria-label="Level complete">
+        <div id="level-complete-text" class="level-complete-text">Level Complete</div>
+    </div>
+
+    <!-- NEW: Pause Menu Overlay -->
+    <div id="pause-menu" class="pause-menu" style="display: none;">
+        <div class="pause-menu-content">
+            <div class="pause-menu-title">Paused</div>
+            
+            <!-- Pause Main Buttons -->
+            <div id="pause-main-buttons" class="pause-menu-buttons">
+                <button id="btn-pause-continue" class="menu-button primary">Continue</button>
+                <button id="btn-pause-options" class="menu-button">Options</button>
+                <button id="btn-pause-endgame" class="menu-button warning" style="display: none;">End Game</button>
+                <button id="btn-pause-mainmenu" class="menu-button" style="display: none;">Back to Main Menu</button>
+            </div>
+
+            <!-- Pause Sub Menu (Hidden by default) -->
+            <div id="pause-sub-menu" class="pause-menu-buttons" style="display: none;">
+                <div id="pause-content-settings" class="menu-content-section">
+                    <h3>Settings</h3>
+                    <div class="setting-item">
+                        <label for="pause-setting-shadows">Enable Shadows</label>
+                        <input type="checkbox" id="pause-setting-shadows">
+                    </div>
+                    <div class="setting-item">
+                        <label for="pause-setting-mute-music">Mute Music</label>
+                        <input type="checkbox" id="pause-setting-mute-music">
+                    </div>
+                </div>
+                <button id="btn-pause-back" class="menu-button">Back</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- End-of-run Stats Board (shown when game_end() triggers) -->
+    <div id="game-end-board" class="game-end-board" style="display: none;">
+        <div class="game-end-board-content">
+            <div id="game-end-title" class="game-end-board-title">Run Complete</div>
+            <div class="game-end-board-stats">
+                <div class="game-end-board-row">
+                    <span class="game-end-board-label">Time</span>
+                    <span id="game-end-time" class="game-end-board-value">00:00</span>
+                </div>
+                <div class="game-end-board-row">
+                    <span class="game-end-board-label">Enemies Killed</span>
+                    <span id="game-end-kills" class="game-end-board-value">0</span>
+                </div>
+            </div>
+            <div class="game-end-board-hint">Press Enter to return to Lobby</div>
+        </div>
+    </div>
+
+    <!-- NEW: Game HUD (Heads Up Display) -->
+    <div id="game-ui" class="game-ui" style="display: none;">
+        <div class="crosshair"></div>
+        <!-- Top Left: HP & Stats -->
+        <div class="hud-stats-container">
+            <div class="hud-hp-row">
+                <div class="hud-hp-label">HP</div>
+                <div class="hud-hp-bar-bg">
+                    <div id="hud-hp-fill" class="hud-hp-fill" style="width: 100%;"></div>
+                </div>
+                <div id="hud-hp-text" class="hud-hp-text">100/100</div>
+            </div>
+            <div class="hud-stats-summary">
+                <span id="hud-stat-atk">ATK: 0</span>
+                <span class="hud-stat-divider">|</span>
+                <span id="hud-stat-def">DEF: 0</span>
+            </div>
+            <div id="hud-level-kills" class="hud-level-kills" style="display: none;">Kills: 0/20</div>
+        </div>
+
+        <!-- Bottom Left: Weapon Selector -->
+        <div class="hud-weapon-container">
+            <!-- Weapon 3 (Top, Smallest) -->
+            <div class="hud-weapon-slot slot-3">
+                <div class="hud-weapon-icon-placeholder"></div>
+                <div class="hud-weapon-key">3</div>
+            </div>
+            <!-- Weapon 2 (Middle, Small) -->
+            <div class="hud-weapon-slot slot-2">
+                <div class="hud-weapon-icon-placeholder"></div>
+                <div class="hud-weapon-key">2</div>
+            </div>
+            <!-- Weapon 1 (Bottom, Largest/Main) -->
+            <div class="hud-weapon-slot slot-1 active">
+                <div class="hud-weapon-icon-placeholder">Pistol</div>
+                <div class="hud-weapon-key">1</div>
+            </div>
+        </div>
+
+        <!-- Bottom Left: Ammo (next to weapon slots) -->
+        <div id="hud-ammo" class="hud-ammo" style="display: none;">0/0</div>
+
+        <!-- Bottom Middle: Reloading indicator -->
+        <div id="hud-reloading" class="hud-reloading" style="display: none;">Reloading</div>
+    </div>
+
     <canvas class="webgl"></canvas>
     <script type="module" src="./script.js"></script>
 </body>
+
 </html>

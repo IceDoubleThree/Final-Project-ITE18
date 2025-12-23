@@ -1,0 +1,26 @@
+{
+  "dialogues": {
+    "tutorial_start": {
+      "id": "tutorial_start",
+      "character": "Guide",
+      "sequence": [
+        { "speaker": "Guide", "text": "Use WASD to move." },
+        { "speaker": "Guide", "text": "Walk up to the NPCs and press F!" }
+      ]
+    },
+    "npc_sakura_intro": {
+      "id": "npc_sakura_intro",
+      "character": "NPC1",
+      "sequence": [
+        { "speaker": "NPC1", "text": "Hello there! I am ______." }
+      ]
+    },
+    "npc_kaito_intro": {
+      "id": "npc_kaito_intro",
+      "character": "NPC2",
+      "sequence": [
+        { "speaker": "NPC2", "text": "Hmph. What do you want?" }
+      ]
+    }
+  }
+}
