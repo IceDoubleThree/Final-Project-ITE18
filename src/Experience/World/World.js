@@ -14,6 +14,8 @@ import buildStoreImpl from "./Locations/buildStore.js";
 import buildForestImpl from "./Locations/buildForest.js";
 import buildAcademyImpl from "./Locations/buildAcademy.js";
 
+// NOTE: Prefer using `experience.appState.current_env/current_loc` for environment/location-aware logic.
+
 export default class World {
   constructor() {
     this.experience = new Experience();
@@ -544,6 +546,9 @@ export default class World {
 
     this.currentLocation = this.buildLocation(config);
     this.isPhysicsActive = true;
+
+    // Keep global state in sync
+    this.experience?.appState?.setLoc(locationKey)
 
     if (this.experience?.game?.active) {
       this.experience.game.setLevel(locationKey);

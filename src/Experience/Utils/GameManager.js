@@ -128,10 +128,16 @@ export default class GameManager {
         // Reset run state and return to lobby (Room)
         if (this.experience) {
           this.experience._runStarted = false
-          this.experience.playShortTransition?.()
-          setTimeout(() => {
-            this.experience.world?.loadLocation?.('Room')
-          }, 120)
+
+          // Let the target function manage current_env
+          if (typeof this.experience.enterLobby === 'function') {
+            this.experience.enterLobby('Room')
+          } else {
+            this.experience.playShortTransition?.()
+            setTimeout(() => {
+              this.experience.world?.loadLocation?.('Room')
+            }, 120)
+          }
         }
       }
       window.addEventListener('keydown', this.endBoard._keyHandler)

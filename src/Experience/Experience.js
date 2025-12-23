@@ -10,6 +10,7 @@ import Debug from "./Utils/Debug.js"
 import Input from './Utils/Input.js'
 import DialogueReader from './Utils/DialogueReader.js'
 import GameManager from './Utils/GameManager.js'
+import AppState, { ENVIRONMENTS } from './Utils/AppState.js'
 
 
 let instance = null
@@ -42,6 +43,10 @@ export default class Experience
         this.camera = new Camera()
         this.renderer = new Renderer()
 
+        // NOTE: Use `experience.appState.current_env/current_loc` for environment-aware logic.
+        // main_env = [main_menu, lobby, game]
+        this.appState = new AppState()
+
         // Game state (timer, levels, kills, etc.)
         this.game = new GameManager(this)
 
@@ -59,6 +64,9 @@ export default class Experience
         // Setup Pause Menu
         this.setupPauseMenu()
 
+        // App starts on the main menu
+        this.enterMainMenu()
+
         // Resize event
         this.sizes.on('resize', () => {
             this.resize()
@@ -73,6 +81,25 @@ export default class Experience
         this.input.on('pause', () => {
             this.togglePause()
         })
+    }
+
+    enterMainMenu() {
+        // Target function sets current_env itself
+        this.appState?.setEnv(ENVIRONMENTS.MAIN_MENU)
+    }
+
+    enterLobby(locationKey = 'Room', options = {}) {
+        // Target function sets current_env itself
+        this.appState?.setEnv(ENVIRONMENTS.LOBBY)
+
+        const withTransition = options?.transition !== false
+        const delayMs = Number.isFinite(options?.delayMs) ? options.delayMs : 120
+
+        if (withTransition) this.playShortTransition?.()
+
+        setTimeout(() => {
+            this.world?.loadLocation?.(locationKey)
+        }, Math.max(0, delayMs))
     }
 
     setupPauseMenu() {
@@ -122,10 +149,7 @@ export default class Experience
             this._runStarted = false
             
             // Transition back to Room (Lobby)
-            this.playShortTransition()
-            setTimeout(() => {
-                this.world.loadLocation('Room')
-            }, 120)
+            this.enterLobby('Room')
         })
 
         this.btnPauseMainMenu?.addEventListener('click', () => {
@@ -167,6 +191,9 @@ export default class Experience
     }
 
     returnToMainMenu() {
+        // Target function sets current_env itself
+        this.enterMainMenu()
+
         // Reset states
         this._lobbyStarted = false
         this._runStarted = false
@@ -197,6 +224,9 @@ export default class Experience
     }
 
     startGame(locationKey = null) {
+        // Target function sets current_env itself
+        this.appState?.setEnv(ENVIRONMENTS.LOBBY)
+
         // Main menu "Start" should only enter the lobby (Room/Store/etc.).
         // The real game run (timer/levels/kills) begins from the Store warp.
         if (this._lobbyStarted) return
@@ -213,6 +243,9 @@ export default class Experience
     }
 
     startRun(startLevelKey = 'Academy') {
+        // Target function sets current_env itself
+        this.appState?.setEnv(ENVIRONMENTS.GAME)
+
         if (this._runStarted) return
         this._runStarted = true
 

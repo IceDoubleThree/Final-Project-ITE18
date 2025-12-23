@@ -1,12 +1,46 @@
 import Experience from './Experience/Experience.js'
 import SoundHandler from './Experience/Utils/SoundHandler.js'
 
+// NOTE: Prefer using `experience.appState.current_env/current_loc` for environment-aware logic.
+
 const experience = new Experience(document.querySelector('canvas.webgl'))
+
+// --- Font loading (from Vite publicDir: ../static/) ---
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
+
+const loadDesignerFont = async () => {
+	try {
+		if (!('fonts' in document) || typeof FontFace === 'undefined') return
+		const fontUrl = `${import.meta.env.BASE_URL}fonts/DESIGNER.otf`
+		const face = new FontFace('DESIGNER', `url(${fontUrl})`, {
+			style: 'normal',
+			weight: '400'
+		})
+		await face.load()
+		document.fonts.add(face)
+		await document.fonts.load('1em DESIGNER')
+	} catch {
+		// Non-fatal: fall back to system fonts if loading fails.
+	}
+}
+
+const designerFontReady = loadDesignerFont()
 
 // --- Audio ---
 const soundHandler = new SoundHandler()
-// Play when main menu loads (will wait for first click if autoplay is blocked)
-soundHandler.playAudio('main_menu')
+
+// Drive menu BGM from current_env
+const syncMenuBgmForEnv = (env) => {
+	if (env === 'main_menu') soundHandler.playAudio('main_menu')
+	else soundHandler.fadeOut(800)
+}
+
+experience?.appState?.on('env', (nextEnv) => {
+	syncMenuBgmForEnv(nextEnv)
+})
+
+// Apply initial state
+syncMenuBgmForEnv(experience?.appState?.current_env ?? 'main_menu')
 
 // --- Loading screen wiring ---
 const loadingScreen = document.getElementById('loading-screen')
@@ -27,12 +61,35 @@ const setLoadingProgress = (loaded, toLoad, sourceName = null) => {
 	}
 }
 
-const hideLoadingScreen = () => {
+const LOADING_EXIT_DELAY_MS = 250
+const LOADING_FADE_FALLBACK_MS = 800
+
+let loadingHideStarted = false
+
+const hideLoadingScreen = (opts = {}) => {
 	if (!loadingScreen) return
-	loadingScreen.classList.add('fade-out')
+	if (loadingHideStarted) return
+	loadingHideStarted = true
+
+	const delayMs = Number.isFinite(opts.delayMs) ? Math.max(0, opts.delayMs) : LOADING_EXIT_DELAY_MS
+
+	// Give the player a beat to see 100% before fading out.
 	setTimeout(() => {
-		loadingScreen.style.display = 'none'
-	}, 650)
+		loadingScreen.classList.add('fade-out')
+
+		const finish = () => {
+			loadingScreen.style.display = 'none'
+			loadingScreen.removeEventListener('transitionend', onTransitionEnd)
+		}
+
+		const onTransitionEnd = (e) => {
+			if (e.target !== loadingScreen) return
+			finish()
+		}
+
+		loadingScreen.addEventListener('transitionend', onTransitionEnd)
+		setTimeout(finish, LOADING_FADE_FALLBACK_MS)
+	}, delayMs)
 }
 
 if (experience?.resources) {
@@ -53,7 +110,11 @@ if (experience?.resources) {
 
 	experience.resources.on('ready', () => {
 		setLoadingProgress(experience.resources.loaded, experience.resources.toLoad)
-		hideLoadingScreen()
+		if (loadingStatus) loadingStatus.textContent = 'Loaded. Entering…'
+		// Avoid a font pop-in on the main menu header.
+		Promise.race([designerFontReady, sleep(1200)]).finally(() => {
+			hideLoadingScreen({ delayMs: LOADING_EXIT_DELAY_MS })
+		})
 	})
 }
 
@@ -129,9 +190,6 @@ if (isDebugMenu && mainMenu && btnStart && experience?.world?.locationConfigs) {
 
 if (btnStart) {
 	btnStart.addEventListener('click', () => {
-		// Main menu music should only play in main menu
-		soundHandler.fadeOut(800)
-
 		// Prevent repeated activation (e.g. Space key triggers click on focused button)
 		btnStart.disabled = true
 		btnStart.blur()

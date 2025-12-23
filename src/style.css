@@ -4,6 +4,14 @@
     padding: 0;
 }
 
+@font-face {
+    font-family: 'DESIGNER';
+    src: url('../fonts/DESIGNER.otf') format('opentype');
+    font-weight: 400;
+    font-style: normal;
+    font-display: swap;
+}
+
 html,
 body
 {
@@ -321,6 +329,7 @@ body
 }
 
 .main-menu-title {
+    font-family: 'DESIGNER', 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
     font-size: 80px;
     font-weight: 800;
     line-height: 1;
@@ -335,9 +344,10 @@ body
 
 .main-menu-right {
     position: fixed;
-    right: 100px;
-    top: 50%;
-    transform: translateY(-50%);
+    right: 50px;
+    top: auto;
+    bottom: 50px;
+    transform: none;
     width: min(360px, 88vw);
     display: flex;
     flex-direction: column;
