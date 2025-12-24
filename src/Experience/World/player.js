@@ -15,8 +15,6 @@ export default class Player {
 
         this.canJump = false 
         this._feetLocalY = 0
-        this._groundedThisStep = false
-        this._lastGroundedTime = 0
         this.mesh = null
         this.animations = [] 
         this.debug = this.experience.debug
@@ -34,53 +32,78 @@ export default class Player {
         this._baseWeightTarget = 1
         this._overlayWeightTarget = 0
         this._overlaySupportWeightTarget = 0
-        this._lastLoggedAnimationState = ''
+
+        // --- INVENTORY SYSTEM ---
+        // Player starts with ALL weapons immediately
+        this.inventory = ['pistol', 'rifle', 'shotgun'] 
 
         // --- WEAPON SYSTEM ---
         this.weapons = {
             pistol: new Weapon('Pistol', {
                 damageMultiplier: 1,
-                damage: 1,
+                damage: 25,
                 range: 50,
-                cooldown: 0.5,
+                cooldown: 0.4,
                 bufferWindowMs: 0,
-                ammo_size: 20,
-                reloading_time: 3
+                ammo_size: 12,
+                reloading_time: 2,
+                isAutomatic: false,
+                spread: 0.01,
+                pelletCount: 1
+            }),
+            rifle: new Weapon('Assault Rifle', {
+                damageMultiplier: 1,
+                damage: 2, // Low damage, high fire rate
+                range: 100,
+                cooldown: 0.1, 
+                ammo_size: 30,
+                reloading_time: 2.5,
+                isAutomatic: true,
+                spread: 0.03,
+                pelletCount: 1
+            }),
+            shotgun: new Weapon('Shotgun', {
+                damageMultiplier: 1,
+                damage: 1, // 1 damage per pellet
+                range: 25,
+                cooldown: 0.9,
+                ammo_size: 6,
+                reloading_time: 3,
+                isAutomatic: false,
+                spread: 0.12, 
+                pelletCount: 10 // 10 pellets
             })
         }
+
         this.currentWeapon = null
         this.isAiming = false
-        this.pistolMesh = null
+        
+        // Store mesh references
+        this.weaponMeshes = {
+            pistol: null,
+            rifle: null,
+            shotgun: null
+        }
 
-        // HUD elements
+        this.tracers = []
+        this.muzzleFlashes = []
+
         this.hudAmmoEl = document.getElementById('hud-ammo')
         this.hudReloadingEl = document.getElementById('hud-reloading')
 
-        // Shooting / animation state
         this._wasShooting = false
         this._isShootingHeld = false
         this._weaponWasReloading = false
         this._oneShotGunAimActive = false
-
         this._gunAimHoldUntilMs = 0
         this._gunAimOneShotTimeScale = 2
         this._gunAimOneShotHoldMs = 1000
 
-        // Shooting raycast (camera-based)
         this._shootRaycaster = new THREE.Raycaster()
-        this._shootRayOrigin = new THREE.Vector3()
-        this._shootRayDirection = new THREE.Vector3()
-        this._shootRayEnd = new THREE.Vector3()
-        this._shootRayTmp = new THREE.Vector3()
-
-        // Debug: visualize the shooting ray
-        this._shootDebug = {
-            line: null,
-            maxDistance: 60,
-        }
+        this._shootDebug = { line: null, maxDistance: 60 }
 
         this.baseHp = 100
-        this.baseAttack = 5
+        this.baseAttack = 1
         this.baseDefense = 0
         this.hp = this.baseHp
         this.attack = this.baseAttack
@@ -105,44 +128,60 @@ export default class Player {
             this.setMesh()
             this.setPhysics()
             this.setupDebug()
+            // Equip pistol by default on load
+            this.equipWeapon('pistol')
         })
 
-        this.input.on('jump', () => {
-            this.jump()
-        })
+        this.input.on('jump', () => this.jump())
+        this.input.on('reload', () => this.reload())
+        this.input.on('interact', () => this.interact())
 
-        this.input.on('reload', () => {
-            this.reload()
-        })
-
-        // --- NEW: Interaction Input (For Level 3 Scavenger Hunt) ---
-        this.input.on('interact', () => {
-            console.log('Player: Interact key pressed')
-            this.interact()
-        })
-
-        // Weapon Inputs
+        // Inventory Switching
         this.input.on('slot1', () => this.equipWeapon('pistol'))
-        this.input.on('slot2', () => this.equipWeapon(null)) 
-        this.input.on('slot3', () => this.equipWeapon(null)) 
+        this.input.on('slot2', () => this.equipWeapon('rifle')) 
+        this.input.on('slot3', () => this.equipWeapon('shotgun')) 
     }
 
     equipWeapon(weaponKey) {
-        if (weaponKey === 'pistol') {
-            this.currentWeapon = this.weapons.pistol
+        // Check if player owns this weapon
+        if (!this.inventory.includes(weaponKey)) {
+            return
+        }
+
+        // Hide all weapon meshes
+        Object.values(this.weaponMeshes).forEach(m => { if(m) m.visible = false })
+        
+        // Update UI Classes
+        const slots = document.querySelectorAll('.hud-weapon-slot')
+        if(slots) slots.forEach(el => el.classList.remove('active'))
+
+        if (weaponKey && this.weapons[weaponKey]) {
+            this.currentWeapon = this.weapons[weaponKey]
             this._weaponWasReloading = Boolean(this.currentWeapon?.isReloading)
-            if (this.pistolMesh) this.pistolMesh.visible = true
-            this.experience.camera?.setWeaponActive?.(true)
-            console.log('Equipped Pistol')
-            document.querySelector('.hud-weapon-slot.slot-1').classList.add('active')
+            
+            if (this.weaponMeshes[weaponKey]) {
+                this.weaponMeshes[weaponKey].visible = true
+            }
+
+            if(this.experience.camera && this.experience.camera.setWeaponActive) {
+                this.experience.camera.setWeaponActive(true)
+            }
+            
+            // Highlight specific HUD slot
+            const slotMap = { 'pistol': 1, 'rifle': 2, 'shotgun': 3 }
+            const slotIndex = slotMap[weaponKey]
+            const slotEl = document.querySelector(`.hud-weapon-slot.slot-${slotIndex}`)
+            if(slotEl) slotEl.classList.add('active')
+
+            console.log(`🔫 Equipped: ${weaponKey} (Slot ${slotIndex})`)
+
         } else {
             this.currentWeapon = null
             this._weaponWasReloading = false
-            if (this.pistolMesh) this.pistolMesh.visible = false
             this.setAiming(false)
-            this.experience.camera?.setWeaponActive?.(false)
-            console.log('Unequipped Weapon')
-            document.querySelector('.hud-weapon-slot.slot-1').classList.remove('active')
+            if(this.experience.camera && this.experience.camera.setWeaponActive) {
+                this.experience.camera.setWeaponActive(false)
+            }
         }
     }
 
@@ -152,7 +191,6 @@ export default class Player {
 
     setAiming(isAiming) {
         if (this.isAiming === isAiming) return
-
         this.isAiming = isAiming
         this.experience.camera.setAimMode(isAiming)
 
@@ -164,36 +202,157 @@ export default class Player {
         }
     }
 
+    createMuzzleFlash(barrelPos) {
+        if (!barrelPos) return
+        const map = this.resources.items.muzzleFlash
+        if (!map) return
+
+        const material = new THREE.SpriteMaterial({ 
+            map: map, 
+            color: 0xffaa00, 
+            transparent: true, 
+            blending: THREE.AdditiveBlending 
+        })
+        const sprite = new THREE.Sprite(material)
+        sprite.position.copy(barrelPos)
+        
+        const scale = (Math.random() * 0.3 + 0.3)
+        sprite.scale.set(scale, scale, 1)
+        sprite.material.rotation = Math.random() * Math.PI
+
+        this.scene.add(sprite)
+        this.muzzleFlashes.push({ mesh: sprite, age: 0, life: 0.06 })
+    }
+
+    createBulletTracer(startPos, endPos) {
+        const points = [startPos, endPos]
+        const geometry = new THREE.BufferGeometry().setFromPoints(points)
+        const material = new THREE.LineBasicMaterial({ color: 0xffffaa, transparent: true, opacity: 0.8 })
+        const line = new THREE.Line(geometry, material)
+        
+        this.scene.add(line)
+        this.tracers.push({ mesh: line, age: 0, life: 0.15 })
+    }
+
+    getBarrelPosition() {
+        let weaponMesh = Object.values(this.weaponMeshes).find(m => m && m.visible)
+        const barrelPos = new THREE.Vector3()
+        
+        if (weaponMesh) {
+            const q = new THREE.Quaternion()
+            weaponMesh.getWorldPosition(barrelPos)
+            weaponMesh.getWorldQuaternion(q)
+            const forwardOffset = this.currentWeapon === this.weapons.pistol ? 0.35 : 0.8
+            const fwd = new THREE.Vector3(0, 0, 1).applyQuaternion(q)
+            barrelPos.add(fwd.multiplyScalar(forwardOffset))
+        } else {
+            this.experience.camera.instance.getWorldPosition(barrelPos)
+            const dir = new THREE.Vector3()
+            this.experience.camera.instance.getWorldDirection(dir)
+            barrelPos.add(dir.multiplyScalar(0.5))
+        }
+        return barrelPos
+    }
+
     shoot() {
         if (!this.currentWeapon) return false
 
         const nowMs = this.time?.elapsed ?? 0
         const fired = this.currentWeapon.requestFire(nowMs)
+        
         if (fired) {
-            this._fireCameraRay(nowMs)
-            if (this.currentWeapon === this.weapons?.pistol) this._playSfx('pistol_shot')
+            const barrelPos = this.getBarrelPosition()
+            this.createMuzzleFlash(barrelPos)
+            
+            if (this.currentWeapon === this.weapons.pistol) 
+                this._playSfx('pistol_shot')
+            else if (this.currentWeapon === this.weapons.rifle) 
+                this._playSfx('pistol_shot', { playbackRate: 1.2, volume: 0.8 }) 
+            else if (this.currentWeapon === this.weapons.shotgun) 
+                this._playSfx('pistol_shot', { playbackRate: 0.7, volume: 1.2 })
+
+            const count = this.currentWeapon.pelletCount || 1
+            for(let i = 0; i < count; i++) {
+                this._fireOneShot(barrelPos)
+            }
         }
         return fired
     }
 
+    _fireOneShot(barrelPos) {
+        const weaponRange = Number.isFinite(this.currentWeapon?.range) ? this.currentWeapon.range : 50
+        const spread = this.currentWeapon.spread || 0
+
+        const camera = this.experience.camera.instance
+        const rayOrigin = new THREE.Vector3()
+        const rayDir = new THREE.Vector3()
+        camera.getWorldPosition(rayOrigin)
+        camera.getWorldDirection(rayDir)
+
+        if (spread > 0) {
+            const spreadVector = new THREE.Vector3(
+                (Math.random() - 0.5) * spread,
+                (Math.random() - 0.5) * spread,
+                (Math.random() - 0.5) * spread
+            )
+            rayDir.add(spreadVector).normalize()
+        }
+
+        this._shootRaycaster.near = 0.01
+        this._shootRaycaster.far = weaponRange
+        this._shootRaycaster.set(rayOrigin, rayDir)
+
+        const hits = this._shootRaycaster.intersectObjects(this.scene.children, true)
+
+        let firstValidHit = null
+        for (const hit of hits) {
+            const obj = hit?.object
+            if (!obj) continue
+            if (this._isDescendantOfPlayerMesh(obj)) continue
+
+            if (obj.isLine || obj.isLineSegments || obj.type === 'Line' || obj.type === 'LineSegments') continue
+            if (obj.isSprite || obj.type === 'Sprite') continue
+
+            const nameLower = (obj.name || '').toLowerCase()
+            if (nameLower.endsWith('_collider')) continue
+            if (nameLower.startsWith('physics_cube') || nameLower.startsWith('physics_cylinder')) continue
+            if (nameLower === 'player-shoot-ray-debug') continue
+
+            firstValidHit = hit
+            break
+        }
+
+        const endPos = new THREE.Vector3().copy(rayOrigin).add(rayDir.multiplyScalar(weaponRange))
+        
+        if (firstValidHit) {
+            endPos.copy(firstValidHit.point)
+            const damageable = this._findDamageableObject(firstValidHit.object)
+            if (damageable) {
+                const baseAtk = Number.isFinite(this.attack) ? this.attack : 1
+                const weaponMultiplier = this.currentWeapon.damageMultiplier ?? 1
+                const weaponBaseDmg = this.currentWeapon.damage ?? 10
+                
+                const dmg = Math.max(0, weaponBaseDmg * baseAtk)
+                this._applyDamageToObject(damageable, dmg)
+            }
+        }
+
+        this.createBulletTracer(barrelPos, endPos)
+        return firstValidHit
+    }
+
     reload() {
         if (!this.currentWeapon) return
-
         const nowMs = this.time?.elapsed ?? 0
-
         if (typeof this.currentWeapon.startReload === 'function') {
             this.currentWeapon.startReload(nowMs)
-        } else if (typeof this.currentWeapon.reload === 'function') {
-            this.currentWeapon.reload(nowMs)
-        } else {
-            console.warn('Player: Current weapon does not have a reload() method.')
+            
+            if (this.currentWeapon === this.weapons.pistol) this._playSfx('pistol_reload')
+            else this._playSfx('pistol_reload', { playbackRate: 0.8 })
         }
     }
 
-    // --- NEW: Interaction Method ---
-    // Used to pick up items for Level 3
     interact() {
-        // Raycast forward a short distance (e.g., 3 units)
         const ray = this._getCameraShootRay(3)
         if (!ray) return
 
@@ -204,69 +363,35 @@ export default class Player {
             const obj = hit.object
             if (this._isDescendantOfPlayerMesh(obj)) continue
             
-            // Walk up to find the root object with userData
             let target = obj
             while(target) {
                 if (target.userData && target.userData.isCollectible) {
-                    // Found a collectible!
-                    console.log('✨ Collectible found:', target.name)
-                    
-                    // Hide it / "Destroy" it
                     target.visible = false
-                    // Ideally you would remove the physics body here too if it exists
-
-                    // Notify Level Manager
                     this.experience.levelManager?.onItemCollected?.()
-                    return // Stop after picking up one item
+                    return 
                 }
                 target = target.parent
             }
         }
-        console.log('Interaction: Nothing found.')
-    }
-
-    _ensureShootDebugLine() {
-        if (!this.debug?.active) return
-        if (this._shootDebug.line) return
-
-        const geometry = new THREE.BufferGeometry().setFromPoints([
-            new THREE.Vector3(0, 0, 0),
-            new THREE.Vector3(0, 0, -1),
-        ])
-
-        const material = new THREE.LineBasicMaterial({
-            color: 0xff0000,
-            transparent: true,
-            opacity: 0.9,
-            depthTest: false,
-            depthWrite: false,
-        })
-
-        const line = new THREE.Line(geometry, material)
-        line.name = 'player-shoot-ray-debug'
-        line.renderOrder = 999999
-        line.visible = false
-        this.scene.add(line)
-        this._shootDebug.line = line
     }
 
     _getCameraShootRay(maxDistance) {
         const camera = this.experience?.camera?.instance
         if (!camera) return null
 
-        camera.getWorldPosition(this._shootRayOrigin)
-        camera.getWorldDirection(this._shootRayDirection)
-        this._shootRayDirection.normalize()
+        const rayOrigin = new THREE.Vector3()
+        const rayDirection = new THREE.Vector3()
+        const rayEnd = new THREE.Vector3()
+        const tmp = new THREE.Vector3()
+
+        camera.getWorldPosition(rayOrigin)
+        camera.getWorldDirection(rayDirection)
+        rayDirection.normalize()
 
         const dist = Number.isFinite(maxDistance) ? maxDistance : 50
-        this._shootRayEnd.copy(this._shootRayOrigin).add(this._shootRayTmp.copy(this._shootRayDirection).multiplyScalar(dist))
+        rayEnd.copy(rayOrigin).add(tmp.copy(rayDirection).multiplyScalar(dist))
 
-        return {
-            origin: this._shootRayOrigin,
-            direction: this._shootRayDirection,
-            end: this._shootRayEnd,
-            maxDistance: dist,
-        }
+        return { origin: rayOrigin, direction: rayDirection, end: rayEnd, maxDistance: dist }
     }
 
     _isDescendantOfPlayerMesh(object3d) {
@@ -300,81 +425,23 @@ export default class Player {
         }
 
         if (!Number.isFinite(ud.hp)) return false
-
         const dmg = Number.isFinite(damageAmount) ? damageAmount : 0
         if (dmg <= 0) return false
 
         ud.hp = Math.max(0, ud.hp - dmg)
-
-        if (this.debug?.active) {
-            const maxHp = Number.isFinite(ud.maxHp) ? ud.maxHp : null
-            const hpText = maxHp != null ? `${ud.hp}/${maxHp}` : `${ud.hp}`
-            console.log(`🩸 Damage ${dmg} -> ${targetObject.name || 'target'} HP: ${hpText}`)
-        }
-
-        if (ud.hp <= 0) {
+        
+        // Check for Death
+        if (ud.hp <= 0 && !ud.dead) {
             ud.dead = true
             targetObject.visible = false
-
-            // Legacy game manager
-            this.experience?.game?.addKill?.(1)
-
-            // --- NEW: Notify Level Manager of Kill ---
-            // If the enemy has userData.isBoss = true, we pass true.
-            const isBoss = !!ud.isBoss
-            this.experience?.levelManager?.onEnemyKilled?.(isBoss)
-        }
-
-        return true
-    }
-
-    _fireCameraRay(nowMs) {
-        const weaponRange = Number.isFinite(this.currentWeapon?.range) ? this.currentWeapon.range : 50
-        const ray = this._getCameraShootRay(weaponRange)
-        if (!ray) return null
-
-        this._shootRaycaster.near = 0.01
-        this._shootRaycaster.far = ray.maxDistance
-        this._shootRaycaster.set(ray.origin, ray.direction)
-
-        const hits = this._shootRaycaster.intersectObjects(this.scene.children, true)
-
-        let firstValidHit = null
-        for (const hit of hits) {
-            const obj = hit?.object
-            if (!obj) continue
-            if (this._isDescendantOfPlayerMesh(obj)) continue
-
-            if (obj.isLine || obj.isLineSegments || obj.type === 'Line' || obj.type === 'LineSegments') continue
-
-            const nameLower = (obj.name || '').toLowerCase()
-            if (nameLower.endsWith('_collider')) continue
-            if (nameLower.startsWith('physics_cube') || nameLower.startsWith('physics_cylinder')) continue
-            if (nameLower === 'player-shoot-ray-debug') continue
-
-            firstValidHit = hit
-            break
-        }
-
-        if (firstValidHit) {
-            const obj = firstValidHit.object
-            const hitName = obj?.name || obj?.parent?.name || 'unnamed'
-            console.log(`🎯 Hit: ${hitName} @ ${Math.round((firstValidHit.distance || 0) * 100) / 100}m`)
-
-            const damageable = this._findDamageableObject(obj)
-            if (damageable) {
-                const baseAtk = Number.isFinite(this.attack) ? this.attack : (Number.isFinite(this.baseAttack) ? this.baseAttack : 1)
-                const weaponMultiplier =
-                    (Number.isFinite(this.currentWeapon?.damageMultiplier) ? this.currentWeapon.damageMultiplier : null) ??
-                    (Number.isFinite(this.currentWeapon?.multiplier) ? this.currentWeapon.multiplier : null) ??
-                    (Number.isFinite(this.currentWeapon?.damage) ? this.currentWeapon.damage : 1)
-
-                const dmg = Math.max(0, baseAtk * weaponMultiplier)
-                this._applyDamageToObject(damageable, dmg)
+            
+            // Increment Kills
+            if (this.experience.game) {
+                this.experience.game.addKill(1)
+                this.experience.levelManager?.onEnemyKilled?.(!!ud.isBoss)
             }
         }
-
-        return firstValidHit
+        return true
     }
 
     updateWeaponHud() {
@@ -406,6 +473,8 @@ export default class Player {
         this.hp = this.baseHp
         this.attack = this.baseAttack
         this.defense = this.baseDefense
+        // Reset Inventory logic removed since we want persistent full loadout for now
+        this.equipWeapon('pistol');
     }
 
     takeDamage(amount, { source = null } = {}) {
@@ -418,129 +487,71 @@ export default class Player {
 
         this.hp = Math.max(0, (Number.isFinite(this.hp) ? this.hp : 0) - dmg)
 
-        if (this.debug?.active) {
-            console.log('💥 Player took damage:', {
-                dmg,
-                source,
-                hp: this.hp,
-                def
-            })
-        }
-
         if (this.hp <= 0 && this.experience?.game?.active) {
             this.experience.game.game_end('dead')
         }
-
         return dmg
     }
 
     setupDebug() {
         if (!this.debug.active) return
-
         const debugFolder = this.debug.ui.addFolder('Player')
-
-        debugFolder.add(this.physicsConfig, 'radius').min(0.1).max(1).step(0.1).name('Physics Radius')
-        debugFolder.add(this.physicsConfig, 'height').min(0.5).max(3).step(0.1).name('Physics Height')
-        debugFolder.add(this.physicsConfig, 'offsetX').min(-1).max(1).step(0.1).name('Offset X')
-        debugFolder.add(this.physicsConfig, 'offsetY').min(-1).max(1).step(0.1).name('Offset Y')
-        debugFolder.add(this.physicsConfig, 'offsetZ').min(-1).max(1).step(0.1).name('Offset Z')
-
+        debugFolder.add(this.physicsConfig, 'radius').min(0.1).max(1).step(0.1)
         debugFolder.add(this.debugVisuals, 'showPhysics').onChange((value) => {
-            if (value) {
-                this.createPhysicsVisualization()
-            } else {
-                if (this.debugVisuals.physicsMesh) {
-                    this.scene.remove(this.debugVisuals.physicsMesh)
-                    this.debugVisuals.physicsMesh = null
-                }
-            }
-        })
-
-        debugFolder.add(this.debugVisuals, 'showBoundingBox').onChange((value) => {
-            if (value) {
-                this.createBoundingBoxVisualization()
-            } else {
-                if (this.debugVisuals.boundingBox) {
-                    this.scene.remove(this.debugVisuals.boundingBox)
-                    this.debugVisuals.boundingBox = null
-                }
+            if (value) this.createPhysicsVisualization()
+            else if (this.debugVisuals.physicsMesh) {
+                this.scene.remove(this.debugVisuals.physicsMesh)
+                this.debugVisuals.physicsMesh = null
             }
         })
     }
 
     createPhysicsVisualization() {
         const geometry = new THREE.CapsuleGeometry(this.physicsConfig.radius, this.physicsConfig.height, 4, 8)
-        const material = new THREE.MeshBasicMaterial({
-            wireframe: true,
-            color: 0x00ff00,
-            transparent: true,
-            opacity: 0.8
-        })
+        const material = new THREE.MeshBasicMaterial({ wireframe: true, color: 0x00ff00 })
         this.debugVisuals.physicsMesh = new THREE.Mesh(geometry, material)
         this.scene.add(this.debugVisuals.physicsMesh)
     }
 
-    createBoundingBoxVisualization() {
-        if (!this.mesh) return
-
-        const bbox = new THREE.Box3().setFromObject(this.mesh)
-        const size = bbox.getSize(new THREE.Vector3())
-        const center = bbox.getCenter(new THREE.Vector3())
-
-        const geometry = new THREE.BoxGeometry(1, 1, 1)
-        const material = new THREE.MeshBasicMaterial({
-            wireframe: true,
-            color: 0x0000ff,
-            transparent: true,
-            opacity: 0.8
-        })
-        this.debugVisuals.boundingBox = new THREE.Mesh(geometry, material)
-        this.debugVisuals.boundingBox.position.copy(center)
-        this.debugVisuals.boundingBox.scale.set(size.x, size.y, size.z)
-        this.scene.add(this.debugVisuals.boundingBox)
-    }
-
     setMesh() {
         const model = this.resources.items.mainCharacter
-        if (!model) {
-            console.error('❌ Main character model not found in resources')
-            return
-        }
+        if (!model) return
 
         this.mesh = model.scene
         this.animations = model.animations 
 
         this.mesh.traverse((child) => {
-            if (child.name.toLowerCase() === 'pistol') {
-                this.pistolMesh = child
+            const name = child.name.toLowerCase()
+            if (name.includes('pistol') || name.includes('gun')) {
+                this.weaponMeshes.pistol = child
                 child.visible = false 
             }
-
+            if (name.includes('rifle') || name.includes('ak47') || name.includes('m4')) {
+                this.weaponMeshes.rifle = child
+                child.visible = false
+            }
+            if (name.includes('shotgun')) {
+                this.weaponMeshes.shotgun = child
+                child.visible = false
+            }
             if (child instanceof THREE.Mesh) {
                 child.castShadow = true
                 child.receiveShadow = true 
-
                 child.frustumCulled = false
                 const mat = child.material
-                if (Array.isArray(mat)) {
-                    mat.forEach((m) => {
-                        if (!m) return
-                        m.side = THREE.DoubleSide
-                        m.needsUpdate = true
-                    })
-                } else if (mat) {
+                if (mat) {
                     mat.side = THREE.DoubleSide
                     mat.needsUpdate = true
                 }
             }
         })
 
+        this.mesh.visible = true
+        this._createPlaceholderWeaponMeshes()
+
         this.mesh.castShadow = true
         this.mesh.receiveShadow = true
-        this.mesh.frustumCulled = false
-
         this.mesh.position.y = 5
-        this.mesh.scale.set(1, 1, 1)
         this.scene.add(this.mesh)
 
         const bbox = new THREE.Box3().setFromObject(this.mesh)
@@ -549,103 +560,82 @@ export default class Player {
         this.setupAnimations()
     }
 
+    _createPlaceholderWeaponMeshes() {
+        let handBone = null
+        this.mesh.traverse(c => {
+            if(c.isBone) {
+                const n = c.name.toLowerCase()
+                if((n.includes('hand') && n.includes('r')) || n.includes('righthand') || n.includes('hand_r')) {
+                    handBone = c
+                }
+            }
+        })
+
+        if(!handBone) return
+
+        if (!this.weaponMeshes.rifle) {
+            const geom = new THREE.BoxGeometry(0.1, 0.15, 0.8)
+            const mat = new THREE.MeshStandardMaterial({ color: 0x444444 })
+            const mesh = new THREE.Mesh(geom, mat)
+            mesh.position.set(0, -0.05, 0.2) 
+            mesh.rotation.x = Math.PI / 2
+            mesh.name = "Rifle_Placeholder"
+            handBone.add(mesh)
+            this.weaponMeshes.rifle = mesh
+            mesh.visible = false
+        }
+
+        if (!this.weaponMeshes.shotgun) {
+            const geom = new THREE.BoxGeometry(0.12, 0.12, 0.6)
+            const mat = new THREE.MeshStandardMaterial({ color: 0x880000 })
+            const mesh = new THREE.Mesh(geom, mat)
+            mesh.position.set(0, -0.05, 0.2)
+            mesh.rotation.x = Math.PI / 2
+            mesh.name = "Shotgun_Placeholder"
+            handBone.add(mesh)
+            this.weaponMeshes.shotgun = mesh
+            mesh.visible = false
+        }
+
+        if (!this.weaponMeshes.pistol) {
+            const geom = new THREE.BoxGeometry(0.05, 0.1, 0.3)
+            const mat = new THREE.MeshStandardMaterial({ color: 0x222222 })
+            const mesh = new THREE.Mesh(geom, mat)
+            mesh.position.set(0, -0.05, 0.1)
+            mesh.rotation.x = Math.PI / 2
+            mesh.name = "Pistol_Placeholder"
+            handBone.add(mesh)
+            this.weaponMeshes.pistol = mesh
+            mesh.visible = false
+        }
+    }
+
     setupAnimations() {
         if (!this.mesh) return
-
         this.mixer = new THREE.AnimationMixer(this.mesh)
-
         this.mixer.addEventListener('finished', (event) => {
             const clipName = event?.action?.getClip?.()?.name?.toLowerCase?.() ?? ''
-            if (clipName.includes('gun_aim') || clipName.includes('aim_gun')) {
+            if (clipName.includes('gun_aim')) {
                 this._oneShotGunAimActive = false
                 this._gunAimHoldUntilMs = (this.time?.elapsed ?? 0) + this._gunAimOneShotHoldMs
             }
         })
 
         if (this.animations && this.animations.length > 0) {
-            
-            // Helper: filter a clip's tracks by bone name.
-            const getBoneNameFromTrack = (trackName = '') => {
-                const beforeProp = trackName.split('.')[0] || ''
-                const afterPipe = beforeProp.split('|').pop() || beforeProp
-                return afterPipe
-            }
-
-            const isArmBone = (boneName = '') => {
-                return /clavicle|shoulder|upperarm|forearm|hand|arm|finger|wrist/i.test(boneName)
-            }
-
-            const isTorsoBone = (boneName = '') => {
-                return /spine|chest|neck|head/i.test(boneName)
-            }
-
-            const isLowerBodyBone = (boneName = '') => {
-                return /pelvis|hip|thigh|calf|shin|knee|ankle|foot|toe|leg|skirt|dress|cloth|apron|cape/i.test(boneName)
-            }
-
-            const makeFilteredClip = (clip, trackPredicate, newNameSuffix) => {
-                const tracks = (clip?.tracks || []).filter((t) => {
-                    const boneName = getBoneNameFromTrack(t?.name || '')
-                    return trackPredicate(boneName, t)
-                })
-
-                if (!tracks.length) return null
-                return new THREE.AnimationClip(`${clip.name}${newNameSuffix}`, clip.duration, tracks)
-            }
-
             this.animations.forEach(clip => {
                 const key = clip.name.toLowerCase()
-                let clipForAction = clip
-                if (key === 'gun_aim' || key === 'aim_gun') {
-                    const filtered = makeFilteredClip(
-                        clip,
-                        (boneName) => isArmBone(boneName) && !/pelvis|hip/i.test(boneName),
-                        '__arms'
-                    )
-                    if (filtered) clipForAction = filtered
-                }
-
-                if (key === 'idle_upper') {
-                    const filtered = makeFilteredClip(
-                        clip,
-                        (boneName) => isTorsoBone(boneName) && !/pelvis|hip/i.test(boneName),
-                        '__torso'
-                    )
-                    if (filtered) clipForAction = filtered
-                }
-
-                if (key === 'walking_legs') {
-                    const filtered = makeFilteredClip(
-                        clip,
-                        (boneName) => isLowerBodyBone(boneName),
-                        '__lower'
-                    )
-                    if (filtered) clipForAction = filtered
-                }
-
-                const action = this.mixer.clipAction(clipForAction)
-
+                const action = this.mixer.clipAction(clip)
                 if (key === 'gun_aim') {
                     action.loop = THREE.LoopOnce
                     action.clampWhenFinished = true
                 } else {
                     action.loop = THREE.LoopRepeat
                 }
-
                 this.actions[key] = action
             })
 
             if (this.actions.idle) {
                 this.baseAction = this.actions.idle
-                this.baseAction.enabled = true
-                this.baseAction.setEffectiveWeight?.(1)
-                this.baseAction.play()
-            } else if (Object.keys(this.actions).length > 0) {
-                const firstKey = Object.keys(this.actions)[0]
-                const firstAction = this.actions[firstKey]
-                this.baseAction = firstAction
-                this.baseAction.enabled = true
-                this.baseAction.setEffectiveWeight?.(1)
                 this.baseAction.play()
             }
         }
@@ -655,22 +645,7 @@ export default class Player {
         if (!requestedName) return null
         if (this.actions[requestedName]) return requestedName
         const targetLower = requestedName.toLowerCase()
-        const matchedKey = Object.keys(this.actions).find((key) => key.toLowerCase().includes(targetLower))
-        return matchedKey || null
-    }
-
-    _getActionClipName(action) {
-        return action?.getClip?.()?.name ?? ''
-    }
-
-    _logCurrentAnimations(reason = '') {
-        const base = this._getActionClipName(this.baseAction)
-        const overlay = this._getActionClipName(this.overlayAction)
-        const support = this._getActionClipName(this.overlaySupportAction)
-        const state = `base=${base || 'none'} | overlay=${overlay || 'none'} | support=${support || 'none'}`
-
-        if (state === this._lastLoggedAnimationState) return
-        this._lastLoggedAnimationState = state
+        return Object.keys(this.actions).find((key) => key.includes(targetLower)) || null
     }
 
     _updateAnimationLayerWeights(isGunOverlayActive, isMoving, shouldSupportOverlay) {
@@ -691,7 +666,6 @@ export default class Player {
             this.overlayAction.enabled = true
             this.overlayAction.setEffectiveWeight?.(this._overlayWeight)
         }
-
         if (this.overlaySupportAction) {
             this.overlaySupportAction.enabled = true
             this.overlaySupportAction.setEffectiveWeight?.(this._overlaySupportWeight)
@@ -703,168 +677,104 @@ export default class Player {
 
         if (!isGunOverlayActive && this.overlayAction && this._overlayWeight <= 0.01) {
             this.overlayAction.stop()
-            this.overlayAction.enabled = false
-            this.overlayAction.timeScale = 1
             this.overlayAction = null
         }
-
         if (!isGunOverlayActive && this.overlaySupportAction && this._overlaySupportWeight <= 0.01) {
             this.overlaySupportAction.stop()
-            this.overlaySupportAction.enabled = false
-            this.overlaySupportAction.timeScale = 1
             this.overlaySupportAction = null
         }
     }
 
     playBaseAnimation(animationName) {
-        if (!this.mixer || Object.keys(this.actions).length === 0) return
-
         const resolvedKey = this._resolveActionKey(animationName)
         const newAction = resolvedKey ? this.actions[resolvedKey] : null
-        if (!newAction) return
-
-        if (newAction === this.baseAction) return
-
-        if (this.baseAction) {
-            this.baseAction.fadeOut(0.2)
-        }
-
-        newAction.enabled = true
-        newAction.reset()
-        newAction.fadeIn(0.2)
-        newAction.play()
-
+        if (!newAction || newAction === this.baseAction) return
+        if (this.baseAction) this.baseAction.fadeOut(0.2)
+        newAction.reset().fadeIn(0.2).play()
         this.baseAction = newAction
     }
 
     playOverlayAnimation(animationName, { timeScale = 1 } = {}) {
-        if (!this.mixer || Object.keys(this.actions).length === 0) return
-
         const resolvedKey = this._resolveActionKey(animationName)
         const newAction = resolvedKey ? this.actions[resolvedKey] : null
         if (!newAction) return
-
-        if (this.overlayAction && this.overlayAction !== newAction) {
-            this.overlayAction.fadeOut(0.15)
-        }
-
-        newAction.enabled = true
-        newAction.setEffectiveWeight?.(1)
+        if (this.overlayAction && this.overlayAction !== newAction) this.overlayAction.fadeOut(0.15)
+        newAction.setEffectiveWeight(1)
         newAction.timeScale = timeScale
-
-        newAction.reset()
-        newAction.fadeIn(0.2)
-        newAction.play()
-
+        newAction.reset().fadeIn(0.2).play()
         this.overlayAction = newAction
         this._overlayWeightTarget = 1
     }
 
     playOverlaySupportAnimation(animationName) {
-        if (!this.mixer || Object.keys(this.actions).length === 0) return
-
         const resolvedKey = this._resolveActionKey(animationName)
         const newAction = resolvedKey ? this.actions[resolvedKey] : null
-        if (!newAction) return
-
-        if (this.overlaySupportAction === newAction) return
-
-        if (this.overlaySupportAction && this.overlaySupportAction !== newAction) {
-            this.overlaySupportAction.fadeOut(0.2)
-        }
-
-        newAction.enabled = true
-        newAction.setEffectiveWeight?.(1)
-        newAction.timeScale = 1
-        newAction.reset()
-        newAction.fadeIn(0.25)
-        newAction.play()
-
+        if (!newAction || this.overlaySupportAction === newAction) return
+        if (this.overlaySupportAction) this.overlaySupportAction.fadeOut(0.2)
+        newAction.setEffectiveWeight(1)
+        newAction.reset().fadeIn(0.25).play()
         this.overlaySupportAction = newAction
         this._overlaySupportWeightTarget = 1
     }
 
     stopOverlayAnimation() {
-        if (!this.overlayAction) return
-        this._overlayWeightTarget = 0
-        this.overlayAction.fadeOut(0.25)
+        if (this.overlayAction) this._overlayWeightTarget = 0
     }
-
     stopOverlaySupportAnimation() {
-        if (!this.overlaySupportAction) return
-        this._overlaySupportWeightTarget = 0
-        this.overlaySupportAction.fadeOut(0.25)
+        if (this.overlaySupportAction) this._overlaySupportWeightTarget = 0
     }
 
     updateBaseAnimation(isMoving, isRunning, isGunOverlayActive) {
-        if (!this.mixer || Object.keys(this.actions).length === 0) return
-
         if (isGunOverlayActive && isMoving) {
             const hasWalkingLegs = !!this._resolveActionKey('walking_legs')
             this.playBaseAnimation(hasWalkingLegs ? 'walking_legs' : 'walking')
             return
         }
-
-        if (!isMoving) {
-            this.playBaseAnimation('idle')
-        } else if (isRunning) {
-            this.playBaseAnimation('running')
-        } else {
-            this.playBaseAnimation('walking')
-        }
+        if (!isMoving) this.playBaseAnimation('idle')
+        else if (isRunning) this.playBaseAnimation('running')
+        else this.playBaseAnimation('walking')
     }
 
     setPhysics() {
         const sphereShape = new CANNON.Sphere(this.physicsConfig.radius)
-
         this.body = new CANNON.Body({
             mass: 1,
             position: new CANNON.Vec3(0, 5, 0),
             material: this.materials.player,
             linearDamping: 0.1,
-            angularDamping: 0.1
+            angularDamping: 0.1,
+            fixedRotation: true
         })
-
         const halfHeight = this.physicsConfig.height / 2 - this.physicsConfig.radius
-        this.body.addShape(sphereShape, new CANNON.Vec3(this.physicsConfig.offsetX, halfHeight + this.physicsConfig.offsetY, this.physicsConfig.offsetZ))
-        this.body.addShape(sphereShape, new CANNON.Vec3(this.physicsConfig.offsetX, -halfHeight + this.physicsConfig.offsetY, this.physicsConfig.offsetZ))
-
-        this._feetLocalY = (-halfHeight + this.physicsConfig.offsetY) - this.physicsConfig.radius
-
-        this.body.fixedRotation = true
-        this.body.updateMassProperties()
-
+        this.body.addShape(sphereShape, new CANNON.Vec3(0, halfHeight + this.physicsConfig.offsetY, 0))
+        this.body.addShape(sphereShape, new CANNON.Vec3(0, -halfHeight + this.physicsConfig.offsetY, 0))
         this.physicsWorld.addBody(this.body)
     }
 
     jump() {
         if (this.canJump) {
-            console.log('Player: Jumping!')
-            if (this.body.velocity.y < 8) {
-                this.body.velocity.y = 8
-            }
+            if (this.body.velocity.y < 8) this.body.velocity.y = 8
             this.canJump = false
         }
     }
 
     update() {
         if (!this.input || !this.mesh) return
-
         const nowMs = this.time?.elapsed ?? 0
 
-        // --- WEAPON INPUT ---
+        // --- WEAPON UPDATE ---
         if (this.currentWeapon) {
             const wasReloading = Boolean(this._weaponWasReloading)
-
-            const firedFromBuffer = this.currentWeapon.update(nowMs)
-            if (firedFromBuffer) {
-                this._fireCameraRay(nowMs)
-                if (this.currentWeapon === this.weapons?.pistol) this._playSfx('pistol_shot')
+            
+            if (this.currentWeapon.isAutomatic && this.input.keys.shoot) {
+                this.shoot()
+            }
+            else {
+                const firedFromBuffer = this.currentWeapon.update(nowMs)
+                if (firedFromBuffer) this.shoot()
             }
 
-            if (this.input.keys.aim !== this.isAiming) {
-                this.setAiming(this.input.keys.aim)
-            }
+            if (this.input.keys.aim !== this.isAiming) this.setAiming(this.input.keys.aim)
 
             const isShooting = !!this.input.keys.shoot
             const shootStarted = isShooting && !this._wasShooting
@@ -872,46 +782,39 @@ export default class Player {
 
             if (isShooting && !this.isAiming) {
                 const overlayClipLower = this.overlayAction?.getClip?.()?.name?.toLowerCase?.() ?? ''
-                const overlayIsGunAim = overlayClipLower.includes('gun_aim') || overlayClipLower.includes('aim_gun')
-                if (!overlayIsGunAim) {
+                if (!overlayClipLower.includes('gun_aim')) {
                     this.playOverlayAnimation('gun_aim', { timeScale: 1 })
-                } else if (this.overlayAction) {
-                    this.overlayAction.timeScale = 1
                 }
             }
-
             if (shootStarted && !this.isAiming) {
                 this._oneShotGunAimActive = true
                 this._gunAimHoldUntilMs = 0
-
-                this.playOverlayAnimation('gun_aim', {
-                    timeScale: this._gunAimOneShotTimeScale
-                })
+                this.playOverlayAnimation('gun_aim', { timeScale: this._gunAimOneShotTimeScale })
             }
 
-            if (shootStarted) {
+            if (shootStarted && !this.currentWeapon.isAutomatic) {
                 this.shoot() 
-            } else if (isShooting) {
-                const firedHeld = this.currentWeapon.tryFireHeld(nowMs)
-                if (firedHeld) {
-                    this._fireCameraRay(nowMs)
-                    if (this.currentWeapon === this.weapons?.pistol) this._playSfx('pistol_shot')
-                }
             }
 
             const isReloadingNow = Boolean(this.currentWeapon?.isReloading)
-            if (!wasReloading && isReloadingNow) {
-                if (this.currentWeapon === this.weapons?.pistol) this._playSfx('pistol_reload')
-            }
             this._weaponWasReloading = isReloadingNow
-
             this._wasShooting = isShooting
+
+            const activeMesh = Object.values(this.weaponMeshes).find(m => m && m.visible)
+            if (activeMesh) {
+                if (isReloadingNow) {
+                    const cycle = (nowMs % 1000) / 1000
+                    activeMesh.rotation.x = (Math.PI / 2) + (Math.sin(cycle * Math.PI * 2) * 0.5)
+                } else {
+                    activeMesh.rotation.x = activeMesh.name.includes('Placeholder') ? Math.PI / 2 : 0
+                }
+            }
+
         } else {
             this._wasShooting = false
             this._isShootingHeld = false
             this._weaponWasReloading = false
             this._oneShotGunAimActive = false
-            this._gunAimHoldUntilMs = 0
             if (this.isAiming) this.setAiming(false)
             this.stopOverlayAnimation()
             this.stopOverlaySupportAnimation()
@@ -919,25 +822,34 @@ export default class Player {
 
         this.updateWeaponHud()
 
-        if (this.debug?.active) {
-            this._ensureShootDebugLine()
-            const dist = Math.max(
-                1,
-                Number.isFinite(this.currentWeapon?.range) ?
-                this.currentWeapon.range :
-                (Number.isFinite(this._shootDebug.maxDistance) ? this._shootDebug.maxDistance : 60)
-            )
-
-            const ray = this.currentWeapon ? this._getCameraShootRay(dist) : null
-            if (this._shootDebug.line && ray) {
-                const pts = [ray.origin.clone(), ray.end.clone()]
-                this._shootDebug.line.geometry.setFromPoints(pts)
-                this._shootDebug.line.visible = true
-            } else if (this._shootDebug.line) {
-                this._shootDebug.line.visible = false
+        // --- VFX UPDATES ---
+        const dt = this.time.delta / 1000
+        
+        for (let i = this.tracers.length - 1; i >= 0; i--) {
+            const t = this.tracers[i]
+            t.age += dt
+            t.mesh.material.opacity = 1 - (t.age / t.life)
+            if (t.age >= t.life) {
+                this.scene.remove(t.mesh)
+                t.mesh.geometry.dispose()
+                t.mesh.material.dispose()
+                this.tracers.splice(i, 1)
             }
         }
 
+        for (let i = this.muzzleFlashes.length - 1; i >= 0; i--) {
+            const f = this.muzzleFlashes[i]
+            f.age += dt
+            const lifeRatio = f.age / f.life
+            f.mesh.scale.setScalar(0.5 * (1 - lifeRatio))
+            if (f.age >= f.life) {
+                this.scene.remove(f.mesh)
+                f.mesh.material.dispose()
+                this.muzzleFlashes.splice(i, 1)
+            }
+        }
+
+        // --- MOVEMENT ---
         if (this.experience.dialogue.isActive()) {
             this.body.velocity.x = 0
             this.body.velocity.z = 0
@@ -945,15 +857,10 @@ export default class Player {
             return 
         }
 
-        if (Math.abs(this.body.velocity.y) < 0.1) {
-            this.canJump = true
-        } else {
-            this.canJump = false
-        }
+        if (Math.abs(this.body.velocity.y) < 0.1) this.canJump = true
+        else this.canJump = false
 
-        let inputX = 0
-        let inputZ = 0
-
+        let inputX = 0, inputZ = 0
         if (this.input.keys.forward) inputZ += 1
         if (this.input.keys.backward) inputZ -= 1
         if (this.input.keys.left) inputX += 1
@@ -962,109 +869,60 @@ export default class Player {
         const isMoving = inputX !== 0 || inputZ !== 0
         const isRunning = isMoving && this.input.keys.shift
 
-        const shouldFaceCameraWhileShooting = !!this.currentWeapon && this._isShootingHeld
+        const isHoldingGunAimPose = nowMs < (this._gunAimHoldUntilMs || 0)
+        const isGunOverlayActive = this.isAiming || this._isShootingHeld || this._oneShotGunAimActive || isHoldingGunAimPose
+        const shouldSupportOverlay = isGunOverlayActive || (this.overlayAction && this._overlayWeight > 0.01)
 
-        if (this.isAiming) {
+        if (this.isAiming || (this.currentWeapon && this._isShootingHeld)) {
             const camera = this.experience.camera.instance
-            const cameraDirection = new THREE.Vector3()
-            camera.getWorldDirection(cameraDirection)
-            const cameraAngle = Math.atan2(cameraDirection.x, cameraDirection.z)
-
-            const targetQuaternion = new THREE.Quaternion()
-            targetQuaternion.setFromAxisAngle(new THREE.Vector3(0, 1, 0), cameraAngle)
-            this.mesh.quaternion.slerp(targetQuaternion, 0.2)
+            const dir = new THREE.Vector3()
+            camera.getWorldDirection(dir)
+            const angle = Math.atan2(dir.x, dir.z)
+            const targetQ = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), angle)
+            this.mesh.quaternion.slerp(targetQ, 0.2)
 
             if (isMoving) {
                 const inputAngle = Math.atan2(inputX, inputZ)
-                const targetRotation = cameraAngle + inputAngle
-                const speed = 2 
-
-                this.body.velocity.x = Math.sin(targetRotation) * speed
-                this.body.velocity.z = Math.cos(targetRotation) * speed
-            } else {
-                this.body.velocity.x = 0
-                this.body.velocity.z = 0
-            }
-        } else if (shouldFaceCameraWhileShooting) {
-            const camera = this.experience.camera.instance
-            const cameraDirection = new THREE.Vector3()
-            camera.getWorldDirection(cameraDirection)
-            const cameraAngle = Math.atan2(cameraDirection.x, cameraDirection.z)
-
-            const targetQuaternion = new THREE.Quaternion()
-            targetQuaternion.setFromAxisAngle(new THREE.Vector3(0, 1, 0), cameraAngle)
-            this.mesh.quaternion.slerp(targetQuaternion, 0.2)
-
-            if (isMoving) {
-                const inputAngle = Math.atan2(inputX, inputZ)
-                const targetRotation = cameraAngle + inputAngle
-
-                const speed = isRunning ? 10 : 3
-                this.body.velocity.x = Math.sin(targetRotation) * speed
-                this.body.velocity.z = Math.cos(targetRotation) * speed
+                const moveAngle = angle + inputAngle
+                const speed = isRunning ? 6 : 2
+                this.body.velocity.x = Math.sin(moveAngle) * speed
+                this.body.velocity.z = Math.cos(moveAngle) * speed
             } else {
                 this.body.velocity.x = 0
                 this.body.velocity.z = 0
             }
         } else if (isMoving) {
-            const inputAngle = Math.atan2(inputX, inputZ)
             const camera = this.experience.camera.instance
-            const cameraDirection = new THREE.Vector3()
-            camera.getWorldDirection(cameraDirection)
-            const cameraAngle = Math.atan2(cameraDirection.x, cameraDirection.z)
-            const targetRotation = cameraAngle + inputAngle
-
-            const targetQuaternion = new THREE.Quaternion()
-            targetQuaternion.setFromAxisAngle(new THREE.Vector3(0, 1, 0), targetRotation)
-            this.mesh.quaternion.slerp(targetQuaternion, 0.2)
-
+            const dir = new THREE.Vector3()
+            camera.getWorldDirection(dir)
+            const camAngle = Math.atan2(dir.x, dir.z)
+            const inputAngle = Math.atan2(inputX, inputZ)
+            const targetRot = camAngle + inputAngle
+            const targetQ = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), targetRot)
+            this.mesh.quaternion.slerp(targetQ, 0.2)
+            
             const speed = isRunning ? 10 : 3
-
-            this.body.velocity.x = Math.sin(targetRotation) * speed
-            this.body.velocity.z = Math.cos(targetRotation) * speed
+            this.body.velocity.x = Math.sin(targetRot) * speed
+            this.body.velocity.z = Math.cos(targetRot) * speed
         } else {
             this.body.velocity.x = 0
             this.body.velocity.z = 0
         }
 
-        const isHoldingGunAimPose = nowMs < (this._gunAimHoldUntilMs || 0)
-        const isGunOverlayActive = this.isAiming || this._isShootingHeld || this._oneShotGunAimActive || isHoldingGunAimPose
+        if (shouldSupportOverlay) this.playOverlaySupportAnimation('idle_upper')
+        else this.stopOverlaySupportAnimation()
 
-        const shouldSupportOverlay = isGunOverlayActive || (this.overlayAction && this._overlayWeight > 0.01)
-
-        if (shouldSupportOverlay) {
-            this.playOverlaySupportAnimation('idle_upper')
-        } else {
-            this.stopOverlaySupportAnimation()
-        }
         this.updateBaseAnimation(isMoving, isRunning, isGunOverlayActive)
-
         this._updateAnimationLayerWeights(isGunOverlayActive, isMoving, shouldSupportOverlay)
 
-        if (!isGunOverlayActive) {
-            this.stopOverlayAnimation()
-        }
-
-        if (this.mixer) {
-            this.mixer.update(this.time.delta / 1000)
-        }
+        if (this.mixer) this.mixer.update(dt)
 
         this.mesh.position.copy(this.body.position)
-        if (this.modelCenterOffset) {
-            this.mesh.position.sub(this.modelCenterOffset)
-        }
+        if (this.modelCenterOffset) this.mesh.position.sub(this.modelCenterOffset)
 
         if (this.debugVisuals.showPhysics && this.debugVisuals.physicsMesh) {
             this.debugVisuals.physicsMesh.position.copy(this.body.position)
-            this.debugVisuals.physicsMesh.position.add(new THREE.Vector3(this.physicsConfig.offsetX, this.physicsConfig.offsetY, this.physicsConfig.offsetZ))
-        }
-        if (this.debugVisuals.showBoundingBox && this.debugVisuals.boundingBox) {
-            const bbox = new THREE.Box3().setFromObject(this.mesh)
-            const size = bbox.getSize(new THREE.Vector3())
-            const center = bbox.getCenter(new THREE.Vector3())
-
-            this.debugVisuals.boundingBox.position.copy(center)
-            this.debugVisuals.boundingBox.scale.set(size.x, size.y, size.z)
+            this.debugVisuals.physicsMesh.position.y += this.physicsConfig.offsetY
         }
     }
 }

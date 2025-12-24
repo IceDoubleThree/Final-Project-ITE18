@@ -8,7 +8,12 @@ export default class Weapon {
             : (Number.isFinite(options.multiplier) ? options.multiplier : null)
         this.range = options.range || 100
 
-        // Cooldown between shots (ms). Back-compat: options.fireRate is treated as seconds.
+        // Weapon specific properties
+        this.pelletCount = options.pelletCount || 1
+        this.spread = options.spread || 0
+        this.isAutomatic = !!options.isAutomatic
+
+        // Cooldown between shots (ms)
         const cooldownMs =
             (Number.isFinite(options.cooldownMs) ? options.cooldownMs : null) ??
             (Number.isFinite(options.cooldown) ? options.cooldown * 1000 : null) ??
@@ -36,7 +41,6 @@ export default class Weapon {
         this.nextFireTimeMs = 0
 
         // Input buffer for rapid clicking
-        // When a click happens during cooldown, it will fire as soon as possible (within buffer window).
         this.bufferedShot = false
         this.bufferedUntilMs = 0
         this.bufferWindowMs = Number.isFinite(options.bufferWindowMs)
@@ -85,7 +89,6 @@ export default class Weapon {
     }
 
     requestFire(nowMs) {
-        // Called on trigger press/hold. Returns true if a shot fired.
         this._finishReloadIfDone(nowMs)
 
         if (this.isReloading) return false
@@ -101,15 +104,12 @@ export default class Weapon {
             return this._fire(nowMs)
         }
 
-        // Buffer the click so it fires once cooldown ends.
         this.bufferedShot = true
         this.bufferedUntilMs = Math.max(this.bufferedUntilMs, nowMs + this.bufferWindowMs)
         return false
     }
 
     tryFireHeld(nowMs) {
-        // Called while trigger is held down.
-        // IMPORTANT: does NOT buffer, otherwise a slightly-long click can queue an extra shot.
         this._finishReloadIfDone(nowMs)
 
         if (this.isReloading) return false
