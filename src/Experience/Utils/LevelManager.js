@@ -15,7 +15,7 @@ export default class LevelManager extends EventEmitter {
                 difficulty: 'easy',
                 timeLimit: 600, // 10 minutes (max level time)
                 exitTime: 30, // Time to reach exit after objective
-                objectiveTarget: 10 // Survive for 2 minutes (120 seconds)
+                objectiveTarget: 120 // Survive for 2 minutes (120 seconds)
             },
             {
                 id: 2,
@@ -61,7 +61,7 @@ export default class LevelManager extends EventEmitter {
         this.timeLeft = 0 // Level time limit (game over if reaches 0)
         this.level_game_time = 0 // Elapsed time for current level in milliseconds
         this.level_game_time_paused = false // True when level timer should stop (after objective complete)
-        this.objectiveTimeLeft = 0 // Time remaining for objective completion (for timed objectives) - calculated from level_game_time
+        this.objectiveTimeLeft = 0 // Elapsed time for objective completion (for timed objectives, counting up) - calculated from level_game_time
 
         // UI Elements (will be queried when needed if not found initially)
         this.uiTimer = document.getElementById('hud-timer')
@@ -242,7 +242,7 @@ export default class LevelManager extends EventEmitter {
             const objectiveTargetSeconds = level.objectiveTarget
             // objectiveTimeLeft now represents elapsed time (counting up)
             this.objectiveTimeLeft = level_game_time_seconds
-            
+
             if (this.objectiveTimeLeft >= objectiveTargetSeconds) {
                 this.objectiveTimeLeft = objectiveTargetSeconds // Cap at target
                 this.checkObjective() // Check if objective is complete
@@ -434,7 +434,7 @@ export default class LevelManager extends EventEmitter {
                 this.objectiveTimeLeft = level.objectiveTarget
             }
             console.log('⏸️ Level game time stopped - Objective complete')
-            
+
             this.trigger('objectiveComplete') // World should enable the Exit Zone mesh
             this.isExitPhase = true
             this.timeLeft = level.exitTime // Set timer to 30 seconds
@@ -499,8 +499,6 @@ export default class LevelManager extends EventEmitter {
         const timeString = `${minutes}:${seconds < 10 ? '0' : ''}${seconds}`
 
         // Re-query UI elements if they're null (in case DOM wasn't ready when constructor ran)
-        // Use GameManager's timer for display
-        const gm = this.experience?.gameManager;
         const uiLevelName = this.uiLevelName || document.getElementById('hud-level-name');
         const uiObjective = this.uiObjective || document.getElementById('hud-objective');
         const uiLevelKills = this.uiLevelKills || document.getElementById('hud-level-kills');
