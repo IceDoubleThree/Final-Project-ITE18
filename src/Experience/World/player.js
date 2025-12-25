@@ -13,19 +13,19 @@ export default class Player {
         this.input = this.experience.input
         this.resources = this.experience.resources
 
-        this.canJump = false 
+        this.canJump = false
         this._feetLocalY = 0
         this.mesh = null
-        this.animations = [] 
+        this.animations = []
         this.debug = this.experience.debug
         this.body = null
         this.mixer = null
         this.actions = {}
-        
+
         this.baseAction = null
         this.overlayAction = null
         this.overlaySupportAction = null
-        
+
         this._baseWeight = 1
         this._overlayWeight = 0
         this._overlaySupportWeight = 0
@@ -35,7 +35,7 @@ export default class Player {
 
         // --- INVENTORY SYSTEM ---
         // Player starts with ALL weapons immediately
-        this.inventory = ['pistol', 'rifle', 'shotgun'] 
+        this.inventory = ['pistol', 'rifle', 'shotgun']
 
         // --- WEAPON SYSTEM ---
         this.weapons = {
@@ -55,7 +55,7 @@ export default class Player {
                 damageMultiplier: 1,
                 damage: 2, // Low damage, high fire rate
                 range: 100,
-                cooldown: 0.1, 
+                cooldown: 0.1,
                 ammo_size: 30,
                 reloading_time: 2.5,
                 isAutomatic: true,
@@ -70,14 +70,14 @@ export default class Player {
                 ammo_size: 6,
                 reloading_time: 3,
                 isAutomatic: false,
-                spread: 0.12, 
+                spread: 0.12,
                 pelletCount: 10 // 10 pellets
             })
         }
 
         this.currentWeapon = null
         this.isAiming = false
-        
+
         // Store mesh references
         this.weaponMeshes = {
             pistol: null,
@@ -138,8 +138,8 @@ export default class Player {
 
         // Inventory Switching
         this.input.on('slot1', () => this.equipWeapon('pistol'))
-        this.input.on('slot2', () => this.equipWeapon('rifle')) 
-        this.input.on('slot3', () => this.equipWeapon('shotgun')) 
+        this.input.on('slot2', () => this.equipWeapon('rifle'))
+        this.input.on('slot3', () => this.equipWeapon('shotgun'))
     }
 
     equipWeapon(weaponKey) {
@@ -149,29 +149,29 @@ export default class Player {
         }
 
         // Hide all weapon meshes
-        Object.values(this.weaponMeshes).forEach(m => { if(m) m.visible = false })
-        
+        Object.values(this.weaponMeshes).forEach(m => { if (m) m.visible = false })
+
         // Update UI Classes
         const slots = document.querySelectorAll('.hud-weapon-slot')
-        if(slots) slots.forEach(el => el.classList.remove('active'))
+        if (slots) slots.forEach(el => el.classList.remove('active'))
 
         if (weaponKey && this.weapons[weaponKey]) {
             this.currentWeapon = this.weapons[weaponKey]
             this._weaponWasReloading = Boolean(this.currentWeapon?.isReloading)
-            
+
             if (this.weaponMeshes[weaponKey]) {
                 this.weaponMeshes[weaponKey].visible = true
             }
 
-            if(this.experience.camera && this.experience.camera.setWeaponActive) {
+            if (this.experience.camera && this.experience.camera.setWeaponActive) {
                 this.experience.camera.setWeaponActive(true)
             }
-            
+
             // Highlight specific HUD slot
             const slotMap = { 'pistol': 1, 'rifle': 2, 'shotgun': 3 }
             const slotIndex = slotMap[weaponKey]
             const slotEl = document.querySelector(`.hud-weapon-slot.slot-${slotIndex}`)
-            if(slotEl) slotEl.classList.add('active')
+            if (slotEl) slotEl.classList.add('active')
 
             console.log(`🔫 Equipped: ${weaponKey} (Slot ${slotIndex})`)
 
@@ -179,7 +179,7 @@ export default class Player {
             this.currentWeapon = null
             this._weaponWasReloading = false
             this.setAiming(false)
-            if(this.experience.camera && this.experience.camera.setWeaponActive) {
+            if (this.experience.camera && this.experience.camera.setWeaponActive) {
                 this.experience.camera.setWeaponActive(false)
             }
         }
@@ -207,15 +207,15 @@ export default class Player {
         const map = this.resources.items.muzzleFlash
         if (!map) return
 
-        const material = new THREE.SpriteMaterial({ 
-            map: map, 
-            color: 0xffaa00, 
-            transparent: true, 
-            blending: THREE.AdditiveBlending 
+        const material = new THREE.SpriteMaterial({
+            map: map,
+            color: 0xffaa00,
+            transparent: true,
+            blending: THREE.AdditiveBlending
         })
         const sprite = new THREE.Sprite(material)
         sprite.position.copy(barrelPos)
-        
+
         const scale = (Math.random() * 0.3 + 0.3)
         sprite.scale.set(scale, scale, 1)
         sprite.material.rotation = Math.random() * Math.PI
@@ -229,7 +229,7 @@ export default class Player {
         const geometry = new THREE.BufferGeometry().setFromPoints(points)
         const material = new THREE.LineBasicMaterial({ color: 0xffffaa, transparent: true, opacity: 0.8 })
         const line = new THREE.Line(geometry, material)
-        
+
         this.scene.add(line)
         this.tracers.push({ mesh: line, age: 0, life: 0.15 })
     }
@@ -237,7 +237,7 @@ export default class Player {
     getBarrelPosition() {
         let weaponMesh = Object.values(this.weaponMeshes).find(m => m && m.visible)
         const barrelPos = new THREE.Vector3()
-        
+
         if (weaponMesh) {
             const q = new THREE.Quaternion()
             weaponMesh.getWorldPosition(barrelPos)
@@ -259,20 +259,20 @@ export default class Player {
 
         const nowMs = this.time?.elapsed ?? 0
         const fired = this.currentWeapon.requestFire(nowMs)
-        
+
         if (fired) {
             const barrelPos = this.getBarrelPosition()
             this.createMuzzleFlash(barrelPos)
-            
-            if (this.currentWeapon === this.weapons.pistol) 
+
+            if (this.currentWeapon === this.weapons.pistol)
                 this._playSfx('pistol_shot')
-            else if (this.currentWeapon === this.weapons.rifle) 
-                this._playSfx('pistol_shot', { playbackRate: 1.2, volume: 0.8 }) 
-            else if (this.currentWeapon === this.weapons.shotgun) 
+            else if (this.currentWeapon === this.weapons.rifle)
+                this._playSfx('pistol_shot', { playbackRate: 1.2, volume: 0.8 })
+            else if (this.currentWeapon === this.weapons.shotgun)
                 this._playSfx('pistol_shot', { playbackRate: 0.7, volume: 1.2 })
 
             const count = this.currentWeapon.pelletCount || 1
-            for(let i = 0; i < count; i++) {
+            for (let i = 0; i < count; i++) {
                 this._fireOneShot(barrelPos)
             }
         }
@@ -323,7 +323,7 @@ export default class Player {
         }
 
         const endPos = new THREE.Vector3().copy(rayOrigin).add(rayDir.multiplyScalar(weaponRange))
-        
+
         if (firstValidHit) {
             endPos.copy(firstValidHit.point)
             const damageable = this._findDamageableObject(firstValidHit.object)
@@ -331,7 +331,7 @@ export default class Player {
                 const baseAtk = Number.isFinite(this.attack) ? this.attack : 1
                 const weaponMultiplier = this.currentWeapon.damageMultiplier ?? 1
                 const weaponBaseDmg = this.currentWeapon.damage ?? 10
-                
+
                 const dmg = Math.max(0, weaponBaseDmg * baseAtk)
                 this._applyDamageToObject(damageable, dmg)
             }
@@ -346,7 +346,7 @@ export default class Player {
         const nowMs = this.time?.elapsed ?? 0
         if (typeof this.currentWeapon.startReload === 'function') {
             this.currentWeapon.startReload(nowMs)
-            
+
             if (this.currentWeapon === this.weapons.pistol) this._playSfx('pistol_reload')
             else this._playSfx('pistol_reload', { playbackRate: 0.8 })
         }
@@ -362,13 +362,15 @@ export default class Player {
         for (const hit of hits) {
             const obj = hit.object
             if (this._isDescendantOfPlayerMesh(obj)) continue
-            
+
             let target = obj
-            while(target) {
+            while (target) {
                 if (target.userData && target.userData.isCollectible) {
                     target.visible = false
-                    this.experience.levelManager?.onItemCollected?.()
-                    return 
+                    if (this.experience.game?.levelManager) {
+                        this.experience.game.levelManager.onItemCollected()
+                    }
+                    return
                 }
                 target = target.parent
             }
@@ -420,25 +422,53 @@ export default class Player {
 
         const enemy = ud.enemy
         if (enemy && typeof enemy.takeDamage === 'function') {
+            // Log hit event before applying damage
+            const enemyType = ud.enemyType || 'unknown'
+            const enemyName = targetObject.name || 'Enemy'
+            console.log(`🔫 Player Hit: ${enemyName} (${enemyType}) | Damage: ${damageAmount} | Weapon: ${this.currentWeapon?.name || 'unknown'}`)
+
+            // Check if enemy is already dead before applying damage
+            const wasDead = enemy.dead || ud.dead
+
+            // Apply damage to enemy
             enemy.takeDamage(damageAmount, this.time?.elapsed ?? 0)
+
+            // Check if enemy just died (was alive before, is dead now)
+            if (!wasDead && enemy.dead) {
+                // Enemy was just killed - notify LevelManager
+                const isBoss = !!ud.isBoss
+                console.log(`🎯 Player Kill: ${enemyName} (${enemyType})${isBoss ? ' [BOSS]' : ''} | Position: (${targetObject.position.x.toFixed(2)}, ${targetObject.position.y.toFixed(2)}, ${targetObject.position.z.toFixed(2)})`)
+
+                // Notify LevelManager of kill
+                if (this.experience.game?.levelManager) {
+                    this.experience.game.levelManager.onEnemyKilled(isBoss)
+                }
+            }
+
             return true
         }
 
+        // Legacy code path: handle objects without enemy reference (for backward compatibility)
         if (!Number.isFinite(ud.hp)) return false
         const dmg = Number.isFinite(damageAmount) ? damageAmount : 0
         if (dmg <= 0) return false
 
         ud.hp = Math.max(0, ud.hp - dmg)
-        
+
         // Check for Death
         if (ud.hp <= 0 && !ud.dead) {
             ud.dead = true
             targetObject.visible = false
-            
-            // Increment Kills
-            if (this.experience.game) {
-                this.experience.game.addKill(1)
-                this.experience.levelManager?.onEnemyKilled?.(!!ud.isBoss)
+
+            // Log kill event
+            const enemyType = ud.enemyType || 'unknown'
+            const enemyName = targetObject.name || 'Enemy'
+            const isBoss = !!ud.isBoss
+            console.log(`🎯 Player Kill: ${enemyName} (${enemyType})${isBoss ? ' [BOSS]' : ''} | Position: (${targetObject.position.x.toFixed(2)}, ${targetObject.position.y.toFixed(2)}, ${targetObject.position.z.toFixed(2)})`)
+
+            // Notify LevelManager of kill
+            if (this.experience.game?.levelManager) {
+                this.experience.game.levelManager.onEnemyKilled(isBoss)
             }
         }
         return true
@@ -518,13 +548,13 @@ export default class Player {
         if (!model) return
 
         this.mesh = model.scene
-        this.animations = model.animations 
+        this.animations = model.animations
 
         this.mesh.traverse((child) => {
             const name = child.name.toLowerCase()
             if (name.includes('pistol') || name.includes('gun')) {
                 this.weaponMeshes.pistol = child
-                child.visible = false 
+                child.visible = false
             }
             if (name.includes('rifle') || name.includes('ak47') || name.includes('m4')) {
                 this.weaponMeshes.rifle = child
@@ -536,7 +566,7 @@ export default class Player {
             }
             if (child instanceof THREE.Mesh) {
                 child.castShadow = true
-                child.receiveShadow = true 
+                child.receiveShadow = true
                 child.frustumCulled = false
                 const mat = child.material
                 if (mat) {
@@ -556,28 +586,28 @@ export default class Player {
 
         const bbox = new THREE.Box3().setFromObject(this.mesh)
         this.modelCenterOffset = bbox.getCenter(new THREE.Vector3()).sub(this.mesh.position)
-        
+
         this.setupAnimations()
     }
 
     _createPlaceholderWeaponMeshes() {
         let handBone = null
         this.mesh.traverse(c => {
-            if(c.isBone) {
+            if (c.isBone) {
                 const n = c.name.toLowerCase()
-                if((n.includes('hand') && n.includes('r')) || n.includes('righthand') || n.includes('hand_r')) {
+                if ((n.includes('hand') && n.includes('r')) || n.includes('righthand') || n.includes('hand_r')) {
                     handBone = c
                 }
             }
         })
 
-        if(!handBone) return
+        if (!handBone) return
 
         if (!this.weaponMeshes.rifle) {
             const geom = new THREE.BoxGeometry(0.1, 0.15, 0.8)
             const mat = new THREE.MeshStandardMaterial({ color: 0x444444 })
             const mesh = new THREE.Mesh(geom, mat)
-            mesh.position.set(0, -0.05, 0.2) 
+            mesh.position.set(0, -0.05, 0.2)
             mesh.rotation.x = Math.PI / 2
             mesh.name = "Rifle_Placeholder"
             handBone.add(mesh)
@@ -655,7 +685,7 @@ export default class Player {
 
         const dt = (this.time?.delta ?? 16) / 1000
         const lerp = (a, b, t) => a + (b - a) * t
-        const smoothing = 12 
+        const smoothing = 12
         const t = 1 - Math.exp(-smoothing * dt)
 
         this._overlayWeight = lerp(this._overlayWeight, this._overlayWeightTarget, t)
@@ -765,7 +795,7 @@ export default class Player {
         // --- WEAPON UPDATE ---
         if (this.currentWeapon) {
             const wasReloading = Boolean(this._weaponWasReloading)
-            
+
             if (this.currentWeapon.isAutomatic && this.input.keys.shoot) {
                 this.shoot()
             }
@@ -793,7 +823,7 @@ export default class Player {
             }
 
             if (shootStarted && !this.currentWeapon.isAutomatic) {
-                this.shoot() 
+                this.shoot()
             }
 
             const isReloadingNow = Boolean(this.currentWeapon?.isReloading)
@@ -824,7 +854,7 @@ export default class Player {
 
         // --- VFX UPDATES ---
         const dt = this.time.delta / 1000
-        
+
         for (let i = this.tracers.length - 1; i >= 0; i--) {
             const t = this.tracers[i]
             t.age += dt
@@ -854,7 +884,7 @@ export default class Player {
             this.body.velocity.x = 0
             this.body.velocity.z = 0
             this.updateBaseAnimation(false, false, false)
-            return 
+            return
         }
 
         if (Math.abs(this.body.velocity.y) < 0.1) this.canJump = true
@@ -900,7 +930,7 @@ export default class Player {
             const targetRot = camAngle + inputAngle
             const targetQ = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), targetRot)
             this.mesh.quaternion.slerp(targetQ, 0.2)
-            
+
             const speed = isRunning ? 10 : 3
             this.body.velocity.x = Math.sin(targetRot) * speed
             this.body.velocity.z = Math.cos(targetRot) * speed

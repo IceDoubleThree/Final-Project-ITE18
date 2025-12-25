@@ -353,16 +353,21 @@ export default function buildAcademy(state) {
       if (!state.isReady) return;
 
       const game = this.experience?.game;
-      if (!game?.active) return;
-      if (game.currentLevelKey !== 'Academy') return;
+      const levelManager = game?.levelManager;
+      
+      // Check if game is active and level manager is active
+      if (!game?.active || !levelManager?.isActive) return;
+      
+      // Get current level's location key
+      const currentLevel = levelManager.levels[levelManager.currentLevelIndex];
+      if (!currentLevel || currentLevel.locationKey !== 'Academy') return;
 
       const nowMs = this.experience?.time?.elapsed ?? 0;
 
       if (!Number.isFinite(levelStartTimeMs)) levelStartTimeMs = nowMs;
 
-      const levelComplete = typeof game.isLevelComplete === 'function'
-        ? game.isLevelComplete('Academy')
-        : false;
+      // Check if level is complete via level manager
+      const levelComplete = levelManager.isExitPhase || false;
 
       if (levelComplete) {
         // Stop level mechanics: remove enemies and unlock the next warp.

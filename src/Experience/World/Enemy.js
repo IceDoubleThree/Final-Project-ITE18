@@ -251,7 +251,11 @@ export default class Enemy {
         const dmg = Number.isFinite(amount) ? amount : 0
         if (dmg <= 0) return
 
+        const previousHp = this.hp
         this.hp = Math.max(0, this.hp - dmg)
+
+        // Log hit event
+        console.log(`💥 Enemy Hit: ${this.name} (${this.type}) | Damage: ${dmg} | HP: ${previousHp} → ${this.hp}/${this.maxHp}`)
 
         // Walker behavior: speed up slightly when hit.
         const t = Number.isFinite(nowMs) ? nowMs : (this.time?.elapsed ?? 0)
@@ -264,13 +268,15 @@ export default class Enemy {
 
         if (this.hp <= 0) {
             this.dead = true
+            console.log(`💀 Enemy Killed: ${this.name} (${this.type}) | Total Damage Taken: ${this.maxHp}`)
+            
             if (this.mesh) {
                 this.mesh.userData.dead = true
                 this.mesh.visible = false
             }
 
-            // Count kill if a run is active
-            this.experience?.game?.addKill?.(1)
+            // Notify LevelManager of kill (handled via player's onEnemyKilled, but keeping for compatibility)
+            // The actual kill tracking happens in LevelManager.onEnemyKilled() called from player
 
             if (this.physicsWorld && this.body) {
                 this.physicsWorld.removeBody(this.body)

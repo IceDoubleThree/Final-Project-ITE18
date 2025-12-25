@@ -3,7 +3,7 @@ import * as CANNON from "cannon-es";
 import Experience from "../Experience.js";
 import Environment from "./Environment.js";
 import PhysicsMaterials from "./PhysicsMaterials.js";
-import Player from "./player.js"; 
+import Player from "./player.js";
 import NPC from "./NPC.js";
 import Portal from "./Portal.js";
 
@@ -20,7 +20,7 @@ export default class World {
     this.scene = this.experience.scene;
     this.resources = this.experience.resources;
     this.debug = this.experience.debug;
-    this.time = this.experience.time; 
+    this.time = this.experience.time;
     this.playerDebugElement = null;
     this.physicsDebug = null;
     this.originDebugMarker = null;
@@ -29,7 +29,7 @@ export default class World {
     this.physicsWorld = new CANNON.World();
     this.physicsWorld.gravity.set(0, -20, 0);
     this.materials = new PhysicsMaterials(this.physicsWorld);
-    this.isPhysicsActive = false; 
+    this.isPhysicsActive = false;
 
     // 2. Setup Player Globally
     this.player = new Player(this.physicsWorld, this.materials);
@@ -81,9 +81,9 @@ export default class World {
     if (this.debug?.active && this.debug?.ui && this.debugFolder) {
       const state = { originMarker: true };
       this.debugFolder.add(state, "originMarker").name("origin marker").onChange((v) => {
-          this.originDebugMarker.enabled = !!v;
-          this.originDebugMarker.mesh.visible = !!v;
-        });
+        this.originDebugMarker.enabled = !!v;
+        this.originDebugMarker.mesh.visible = !!v;
+      });
     }
   }
 
@@ -231,9 +231,9 @@ export default class World {
     if (this.debug?.active && this.debug?.ui && this.debugFolder) {
       const state = { physicsDebug: true };
       this.debugFolder.add(state, "physicsDebug").name("physics debug").onChange((v) => {
-          this.physicsDebug.enabled = !!v;
-          this.physicsDebug.group.visible = !!v;
-        });
+        this.physicsDebug.enabled = !!v;
+        this.physicsDebug.group.visible = !!v;
+      });
     }
   }
 
@@ -327,9 +327,9 @@ export default class World {
       if (this.physicsDebug) {
         const state = { physicsDebug: this.physicsDebug.enabled };
         this.debugFolder.add(state, "physicsDebug").name("physics debug").onChange((v) => {
-            this.physicsDebug.enabled = !!v;
-            this.physicsDebug.group.visible = !!v;
-          });
+          this.physicsDebug.enabled = !!v;
+          this.physicsDebug.group.visible = !!v;
+        });
       }
     }
   }
@@ -397,7 +397,30 @@ export default class World {
     this.currentLocation = this.buildLocation(config);
     this.isPhysicsActive = true;
     this.experience?.appState?.setLoc(locationKey)
-    if (this.experience?.game?.active) this.experience.game.setLevel(locationKey);
+
+    // Handle level manager synchronization
+    // Only sync if game is active and we're not being called from onLevelStart
+    const game = this.experience?.game;
+    const levelManager = game?.levelManager;
+
+    if (game?.active && levelManager && !options?._fromLevelStart) {
+      // If level manager is not active, start level 0
+      if (!levelManager.isActive) {
+        levelManager.startLevel(0);
+      } else {
+        // If level manager is active, check if current level matches location
+        const currentLevel = levelManager.levels[levelManager.currentLevelIndex];
+        if (currentLevel && currentLevel.locationKey !== locationKey) {
+          // Find the level index that matches this location
+          const matchingLevelIndex = levelManager.levels.findIndex(level => level.locationKey === locationKey);
+          if (matchingLevelIndex >= 0) {
+            // Restart the matching level
+            levelManager.startLevel(matchingLevelIndex);
+          }
+        }
+      }
+    }
+
     if (this.environment && this.environment.environmentMap) this.environment.environmentMap.updateMaterials();
     if (this.debugState) this.debugState.location = locationKey;
   }
@@ -513,7 +536,7 @@ export default class World {
       });
     }
     if (loc.portals) loc.portals.forEach((portal) => portal.destroy());
-    
+
     loc.physicsBodies.forEach((body) => this.physicsWorld.removeBody(body));
     loc.disposables.forEach((item) => { if (item?.dispose) item.dispose(); });
     if (loc.group) this.scene.remove(loc.group);
@@ -538,7 +561,7 @@ export default class World {
     if (this.currentLocation && !this.currentLocation.isReady) this.currentLocation.isReady = true
     if (this.currentLocation && this.currentLocation.updates) this.currentLocation.updates.forEach((updateFn) => updateFn());
     if (this.currentLocation && this.currentLocation.npcs) this.currentLocation.npcs.forEach((npc) => npc.update());
-    
+
     if (this.experience?.game?.active && this.currentLocation?.isReady && this.currentLocation?.enemies) {
       this.currentLocation.enemies.forEach((enemy) => enemy.update());
     }
@@ -547,5 +570,45 @@ export default class World {
       const { x, y, z } = this.player.mesh.position;
       this.playerDebugElement.textContent = `Player: x=${x.toFixed(2)} y=${y.toFixed(2)} z=${z.toFixed(2)}`;
     }
+  }
+  // --- Event Handlers for LevelManager signals ---
+  onLevelStart(levelData) {
+    // Only load the location if it's not already loaded
+    if (
+      levelData &&
+      levelData.locationKey &&
+      (!this.currentLocation || this.currentLocation.key !== levelData.locationKey)
+    ) {
+      this.loadLocation(levelData.locationKey, { forceReload: true, _fromLevelStart: true });
+    }
+  }
+
+  onSpawnItems(count) {
+    // Implement item spawning logic if needed
+    // e.g., this.spawnItems(count);
+  }
+
+  onSpawnBoss() {
+    // Implement boss spawning logic if needed
+    // e.g., this.spawnBoss();
+  }
+
+  onObjectiveComplete() {
+    // Implement logic for when an objective is completed
+  }
+
+  onLevelComplete() {
+    // Implement logic for when a level is completed
+    // e.g., unlock next level, show UI, etc.
+  }
+
+  onGameComplete() {
+    // Implement logic for when the game is completed
+    // e.g., show end screen, reset game, etc.
+  }
+
+  onGameOver(reason) {
+    // Implement logic for when the game is over
+    // e.g., show game over screen, reset state, etc.
   }
 }
