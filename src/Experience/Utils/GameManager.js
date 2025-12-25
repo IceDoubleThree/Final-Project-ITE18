@@ -4,9 +4,10 @@ export default class GameManager {
   constructor(experience) {
     this.experience = experience;
     this.active = false;
-    this.elapsedMs = 0;
+    this.total_game_time = 0; // Total game time in milliseconds
     this.timerEl = null;
     this.timerPaused = false;
+    this.timerFrozen = false; // Prevents UI updates when true
 
     // Statistics Tracker - Source of Truth for all statistics
     this.statistics = {
@@ -15,6 +16,7 @@ export default class GameManager {
         kills: 0,
         items: 0,
         levelsCompleted: 0,
+        total_game_time: 0, // Total game time in milliseconds
       },
       // Per-level statistics (indexed by level index)
       perLevel: {},
@@ -53,9 +55,10 @@ export default class GameManager {
     const world = this.experience?.world;
     if (world && this.levelManager) {
       this.levelManager.on('levelStart', (levelData) => {
-        // Resume timer when starting a new level
+        // Resume total_game_time when starting a new level
         this.timerPaused = false;
-        console.log('⏱️ Timer resumed - Level started');
+        this.timerFrozen = false;
+        console.log('⏱️ Total game time resumed - Level started');
         if (typeof world.onLevelStart === 'function') world.onLevelStart(levelData);
       });
       this.levelManager.on('spawnItems', (count) => {
@@ -65,12 +68,21 @@ export default class GameManager {
         if (typeof world.onSpawnBoss === 'function') world.onSpawnBoss();
       });
       this.levelManager.on('objectiveComplete', () => {
+        // Pause total_game_time when objective is complete (until next level)
+        this.timerPaused = true;
+        this.timerFrozen = true;
+        // Freeze timer UI at final value
+        if (this.timerEl) {
+          this.timerEl.textContent = this.formatElapsed(this.total_game_time);
+        }
+        console.log('⏸️ Total game time paused & frozen - Objective complete');
         if (typeof world.onObjectiveComplete === 'function') world.onObjectiveComplete();
       });
       this.levelManager.on('levelComplete', () => {
         // Pause timer when level completes
         this.timerPaused = true;
-        console.log('⏸️ Timer paused - Level completed');
+        this.timerFrozen = true;
+        console.log('⏸️ Timer paused & frozen - Level completed');
         // Statistics are already tracked by LevelManager via statistics tracker
         // Just increment levels completed
         this.statistics.total.levelsCompleted++;
@@ -87,7 +99,7 @@ export default class GameManager {
 
   start(options = {}) {
     this.active = true;
-    this.elapsedMs = 0;
+    this.total_game_time = 0;
     this.timerPaused = false;
 
     // Reset statistics for new run
@@ -96,6 +108,7 @@ export default class GameManager {
         kills: 0,
         items: 0,
         levelsCompleted: 0,
+        total_game_time: 0,
       },
       perLevel: {},
     };
@@ -141,7 +154,11 @@ export default class GameManager {
     if (!this.active && state !== 'premature_end') return
 
     console.log(`Game Ended. State: ${state}`);
-    const timeStr = this.formatElapsed(this.elapsedMs);
+    // Update statistics with final total_game_time before displaying
+    if (this.statistics && this.statistics.total) {
+      this.statistics.total.total_game_time = this.total_game_time;
+    }
+    const timeStr = this.formatElapsed(this.total_game_time);
 
     // IMPORTANT: Collect statistics BEFORE calling stop() (which might reset things)
     // Ensure statistics object exists - check both this.statistics and levelManager.statistics
@@ -230,7 +247,7 @@ export default class GameManager {
 
   stop() {
     this.active = false;
-    this.elapsedMs = 0;
+    this.total_game_time = 0;
     this.timerPaused = false;
 
     this.experience?.world?.clearEnemies?.();
@@ -360,9 +377,19 @@ export default class GameManager {
 
     const d = Number.isFinite(deltaMs) ? deltaMs : 0;
     if (!this.timerPaused) {
-      this.elapsedMs += Math.max(0, d);
-      // Only update timer UI when timer is not paused
-      if (this.timerEl) this.timerEl.textContent = this.formatElapsed(this.elapsedMs);
+      this.total_game_time += Math.max(0, d);
+      // Update statistics with current total_game_time
+      if (this.statistics && this.statistics.total) {
+        this.statistics.total.total_game_time = this.total_game_time;
+      }
+    }
+    // Only update timer UI if not frozen and game is active
+    if (this.timerEl && !this.timerFrozen && this.active) {
+      const formatted = this.formatElapsed(this.total_game_time);
+      this.timerEl.textContent = formatted;
+      // Also update HUD timer if present
+      const hudTimer = document.getElementById('hud-timer');
+      if (hudTimer) hudTimer.textContent = formatted;
     }
 
     this.updateHUD();
@@ -427,7 +454,7 @@ export default class GameManager {
    * @returns {object} Total statistics object
    */
   getTotalStats() {
-    return this.statistics ? this.statistics.total : { kills: 0, items: 0, levelsCompleted: 0 };
+    return this.statistics ? this.statistics.total : { kills: 0, items: 0, levelsCompleted: 0, total_game_time: 0 };
   }
 
   /**
