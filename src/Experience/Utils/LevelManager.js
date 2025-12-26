@@ -15,7 +15,7 @@ export default class LevelManager extends EventEmitter {
                 difficulty: 'easy',
                 timeLimit: 600, // 10 minutes (max level time)
                 exitTime: 30, // Time to reach exit after objective
-                objectiveTarget: 120 // Survive for 2 minutes (120 seconds)
+                objectiveTarget: 10 // Survive for 2 minutes (120 seconds)
             },
             {
                 id: 2,
@@ -59,9 +59,7 @@ export default class LevelManager extends EventEmitter {
         this.isActive = false
         this.isExitPhase = false // True when objective is done, running to exit
         this.timeLeft = 0 // Level time limit (game over if reaches 0)
-        this.level_game_time = 0 // Elapsed time for current level in milliseconds
-        this.level_game_time_paused = false // True when level timer should stop (after objective complete)
-        this.objectiveTimeLeft = 0 // Elapsed time for objective completion (for timed objectives, counting up) - calculated from level_game_time
+        this.objectiveTimeLeft = 0 // Time remaining for objective completion (for timed objectives)
 
         // UI Elements (will be queried when needed if not found initially)
         this.uiTimer = document.getElementById('hud-timer')
@@ -187,13 +185,10 @@ export default class LevelManager extends EventEmitter {
         this.isExitPhase = false
         this.isActive = true
         this.timeLeft = levelData.timeLimit
-        this.level_game_time = 0 // Reset level timer
-        this.level_game_time_paused = false // Resume level timer
 
-        // Initialize objective time for timed objectives (will be calculated from level_game_time)
+        // Initialize objective time for timed objectives
         if (levelData.type === 'timed_survival') {
-            // objectiveTimeLeft now represents elapsed time (counting up), starts at 0
-            this.objectiveTimeLeft = 0
+            this.objectiveTimeLeft = levelData.objectiveTarget // Time in seconds
         } else {
             this.objectiveTimeLeft = 0
         }
@@ -218,37 +213,24 @@ export default class LevelManager extends EventEmitter {
     stop() {
         this.isActive = false
         this.currentProgress = 0
-        this.level_game_time = 0
-        this.level_game_time_paused = false
     }
 
     update(deltaTimeMs) {
         if (!this.isActive) return
 
-        // Update level_game_time if not paused
-        if (!this.level_game_time_paused) {
-            this.level_game_time += Math.max(0, deltaTimeMs)
-        }
-
         // Convert ms to seconds
         const dtSeconds = deltaTimeMs / 1000
         this.timeLeft -= dtSeconds
 
-        // Calculate objective time for timed_survival levels from level_game_time
-        // Only recalculate if not in exit phase (objective not yet complete)
+        // Track objective time for timed_survival levels
         const level = this.levels[this.currentLevelIndex]
-        if (level && level.type === 'timed_survival' && !this.isExitPhase) {
-            const level_game_time_seconds = this.level_game_time / 1000
-            const objectiveTargetSeconds = level.objectiveTarget
-            // objectiveTimeLeft now represents elapsed time (counting up)
-            this.objectiveTimeLeft = level_game_time_seconds
-
-            if (this.objectiveTimeLeft >= objectiveTargetSeconds) {
-                this.objectiveTimeLeft = objectiveTargetSeconds // Cap at target
+        if (level && level.type === 'timed_survival' && this.objectiveTimeLeft > 0) {
+            this.objectiveTimeLeft -= dtSeconds
+            if (this.objectiveTimeLeft <= 0) {
+                this.objectiveTimeLeft = 0
                 this.checkObjective() // Check if objective is complete
             }
         }
-        // Once objective is complete (isExitPhase = true), objectiveTimeLeft stays at target until next level
 
         if (this.timeLeft <= 0) {
             this.trigger('gameOver', 'Time Run Out!')
@@ -359,9 +341,9 @@ export default class LevelManager extends EventEmitter {
         const level = this.levels[this.currentLevelIndex]
         const levelIndex = this.currentLevelIndex
 
-        // For timed_survival, return time elapsed from level_game_time
+        // For timed_survival, return time elapsed (objectiveTarget - timeLeft)
         if (level.type === 'timed_survival') {
-            const elapsed = this.level_game_time / 1000 // Convert ms to seconds
+            const elapsed = level.objectiveTarget - this.objectiveTimeLeft
             return Math.max(0, Math.floor(elapsed))
         }
 
@@ -412,8 +394,8 @@ export default class LevelManager extends EventEmitter {
 
         // Check objective based on level type
         if (level.type === 'timed_survival') {
-            // Objective complete when elapsed time >= target time (survived the duration)
-            objectiveComplete = this.objectiveTimeLeft >= level.objectiveTarget
+            // Objective complete when time runs out (survived the duration)
+            objectiveComplete = this.objectiveTimeLeft <= 0
             if (objectiveComplete) {
                 console.log(`✅ Objective Complete! Survived ${level.objectiveTarget} seconds! Find the Exit!`)
             }
@@ -427,14 +409,6 @@ export default class LevelManager extends EventEmitter {
         }
 
         if (objectiveComplete) {
-            // Stop level_game_time when objective completes
-            this.level_game_time_paused = true
-            // Ensure objectiveTimeLeft is set to target (elapsed time = target)
-            if (level.type === 'timed_survival') {
-                this.objectiveTimeLeft = level.objectiveTarget
-            }
-            console.log('⏸️ Level game time stopped - Objective complete')
-
             this.trigger('objectiveComplete') // World should enable the Exit Zone mesh
             this.isExitPhase = true
             this.timeLeft = level.exitTime // Set timer to 30 seconds
@@ -499,6 +473,8 @@ export default class LevelManager extends EventEmitter {
         const timeString = `${minutes}:${seconds < 10 ? '0' : ''}${seconds}`
 
         // Re-query UI elements if they're null (in case DOM wasn't ready when constructor ran)
+        // Use GameManager's timer for display
+        const gm = this.experience?.gameManager;
         const uiLevelName = this.uiLevelName || document.getElementById('hud-level-name');
         const uiObjective = this.uiObjective || document.getElementById('hud-objective');
         const uiLevelKills = this.uiLevelKills || document.getElementById('hud-level-kills');
@@ -518,14 +494,11 @@ export default class LevelManager extends EventEmitter {
                 if (level.type === 'boss') {
                     uiObjective.textContent = "Defeat the Boss"
                 } else if (level.type === 'timed_survival') {
-                    // Format elapsed time as MM:SS (counting up)
-                    const elapsedMinutes = Math.floor(this.objectiveTimeLeft / 60)
-                    const elapsedSeconds = Math.floor(this.objectiveTimeLeft % 60)
-                    const elapsedString = `${elapsedMinutes}:${String(elapsedSeconds).padStart(2, '0')}`
-                    const targetMinutes = Math.floor(level.objectiveTarget / 60)
-                    const targetSeconds = Math.floor(level.objectiveTarget % 60)
-                    const targetString = `${targetMinutes}:${String(targetSeconds).padStart(2, '0')}`
-                    uiObjective.textContent = `Survive: ${elapsedString} / ${targetString}`
+                    // Format time as MM:SS
+                    const minutes = Math.floor(this.objectiveTimeLeft / 60)
+                    const seconds = Math.floor(this.objectiveTimeLeft % 60)
+                    const timeString = `${minutes}:${seconds < 10 ? '0' : ''}${seconds}`
+                    uiObjective.textContent = `Survive: ${timeString}`
                 } else if (level.type === 'collection') {
                     uiObjective.textContent = `Collect Items: ${progress} / ${level.objectiveTarget}`
                 } else {
@@ -541,14 +514,11 @@ export default class LevelManager extends EventEmitter {
                 uiLevelKills.textContent = `Kills: ${progress} / ${level.objectiveTarget}`
                 uiLevelKills.style.display = 'block'
             } else if (level.type === 'timed_survival') {
-                // Show elapsed time (counting up) for timed survival
-                const elapsedMinutes = Math.floor(this.objectiveTimeLeft / 60)
-                const elapsedSeconds = Math.floor(this.objectiveTimeLeft % 60)
-                const elapsedString = `${elapsedMinutes}:${String(elapsedSeconds).padStart(2, '0')}`
-                const targetMinutes = Math.floor(level.objectiveTarget / 60)
-                const targetSeconds = Math.floor(level.objectiveTarget % 60)
-                const targetString = `${targetMinutes}:${String(targetSeconds).padStart(2, '0')}`
-                uiLevelKills.textContent = `Time: ${elapsedString} / ${targetString}`
+                // Show time remaining for timed survival
+                const minutes = Math.floor(this.objectiveTimeLeft / 60)
+                const seconds = Math.floor(this.objectiveTimeLeft % 60)
+                const timeString = `${minutes}:${seconds < 10 ? '0' : ''}${seconds}`
+                uiLevelKills.textContent = `Time: ${timeString} / ${Math.floor(level.objectiveTarget / 60)}:${String(Math.floor(level.objectiveTarget % 60)).padStart(2, '0')}`
                 uiLevelKills.style.display = 'block'
             } else if (level.type === 'collection') {
                 uiLevelKills.textContent = `Items: ${progress} / ${level.objectiveTarget}`

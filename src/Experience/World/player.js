@@ -98,6 +98,8 @@ export default class Player {
         this._gunAimHoldUntilMs = 0
         this._gunAimOneShotTimeScale = 2
         this._gunAimOneShotHoldMs = 1000
+        this._pistolWalkingHoldUntilMs = 0
+        this._pistolWalkingHoldMs = 250 // ms to hold pistol_walking to avoid flicker
 
         this._shootRaycaster = new THREE.Raycaster()
         this._shootDebug = { line: null, maxDistance: 60 }
@@ -195,7 +197,9 @@ export default class Player {
         this.experience.camera.setAimMode(isAiming)
 
         if (isAiming) {
-            this.playOverlayAnimation('gun_aim', { timeScale: 1 })
+            this.playOverlayAnimation('pistol_aim', { timeScale: 1 })
+            const nowMs = this.time?.elapsed ?? 0
+            this._pistolWalkingHoldUntilMs = nowMs + this._pistolWalkingHoldMs
         } else {
             this.stopOverlayAnimation()
             this.updateBaseAnimation(false, false, false)
@@ -239,12 +243,21 @@ export default class Player {
         const barrelPos = new THREE.Vector3()
 
         if (weaponMesh) {
-            const q = new THREE.Quaternion()
-            weaponMesh.getWorldPosition(barrelPos)
-            weaponMesh.getWorldQuaternion(q)
-            const forwardOffset = this.currentWeapon === this.weapons.pistol ? 0.35 : 0.8
-            const fwd = new THREE.Vector3(0, 0, 1).applyQuaternion(q)
-            barrelPos.add(fwd.multiplyScalar(forwardOffset))
+            // Use the model's barrel position directly (check for barrel bone/helper first)
+            let barrelHelper = null
+            weaponMesh.traverse((child) => {
+                const name = child.name.toLowerCase()
+                if (name.includes('barrel') || name.includes('muzzle')) {
+                    barrelHelper = child
+                }
+            })
+
+            if (barrelHelper) {
+                barrelHelper.getWorldPosition(barrelPos)
+            } else {
+                // Fallback to weapon mesh position if no barrel helper found
+                weaponMesh.getWorldPosition(barrelPos)
+            }
         } else {
             this.experience.camera.instance.getWorldPosition(barrelPos)
             const dir = new THREE.Vector3()
@@ -264,17 +277,30 @@ export default class Player {
             const barrelPos = this.getBarrelPosition()
             this.createMuzzleFlash(barrelPos)
 
-            if (this.currentWeapon === this.weapons.pistol)
+            // --- PISTOL SHOOTING ANIMATION LOGIC (from old player.js) ---
+            if (this.currentWeapon === this.weapons.pistol) {
                 this._playSfx('pistol_shot')
-            else if (this.currentWeapon === this.weapons.rifle)
+                // Play snappy one-shot pistol_aim overlay animation
+                this._gunAimHoldUntilMs = nowMs + this._gunAimOneShotHoldMs
+                this._oneShotGunAimActive = true
+                this.playOverlayAnimation('pistol_aim', { timeScale: this._gunAimOneShotTimeScale })
+                // Hold pistol_walking briefly to avoid rapid switching
+                this._pistolWalkingHoldUntilMs = nowMs + this._pistolWalkingHoldMs
+            } else if (this.currentWeapon === this.weapons.rifle) {
                 this._playSfx('pistol_shot', { playbackRate: 1.2, volume: 0.8 })
-            else if (this.currentWeapon === this.weapons.shotgun)
+            } else if (this.currentWeapon === this.weapons.shotgun) {
                 this._playSfx('pistol_shot', { playbackRate: 0.7, volume: 1.2 })
+            }
 
             const count = this.currentWeapon.pelletCount || 1
             for (let i = 0; i < count; i++) {
                 this._fireOneShot(barrelPos)
             }
+
+            // Immediately update base animation to switch from walking to walking_legs if shooting while moving
+            const isMoving = this.input.keys.forward || this.input.keys.backward || this.input.keys.left || this.input.keys.right
+            const isRunning = isMoving && this.input.keys.shift
+            this.updateBaseAnimation(isMoving, isRunning, true)  // gun overlay active
         }
         return fired
     }
@@ -549,6 +575,7 @@ export default class Player {
 
         this.mesh = model.scene
         this.animations = model.animations
+        console.log('Main Character Animations:', this.animations)
 
         this.mesh.traverse((child) => {
             const name = child.name.toLowerCase()
@@ -645,7 +672,7 @@ export default class Player {
         this.mixer = new THREE.AnimationMixer(this.mesh)
         this.mixer.addEventListener('finished', (event) => {
             const clipName = event?.action?.getClip?.()?.name?.toLowerCase?.() ?? ''
-            if (clipName.includes('gun_aim')) {
+            if (clipName.includes('pistol_aim')) {
                 this._oneShotGunAimActive = false
                 this._gunAimHoldUntilMs = (this.time?.elapsed ?? 0) + this._gunAimOneShotHoldMs
             }
@@ -655,7 +682,7 @@ export default class Player {
             this.animations.forEach(clip => {
                 const key = clip.name.toLowerCase()
                 const action = this.mixer.clipAction(clip)
-                if (key === 'gun_aim') {
+                if (key === 'pistol_aim') {
                     action.loop = THREE.LoopOnce
                     action.clampWhenFinished = true
                 } else {
@@ -663,6 +690,8 @@ export default class Player {
                 }
                 this.actions[key] = action
             })
+
+            console.log('Animation Actions:', this.actions)
 
             if (this.actions.idle) {
                 this.baseAction = this.actions.idle
@@ -685,7 +714,7 @@ export default class Player {
 
         const dt = (this.time?.delta ?? 16) / 1000
         const lerp = (a, b, t) => a + (b - a) * t
-        const smoothing = 12
+        const smoothing = 20  // Increased for smoother transitions to reduce stiffness
         const t = 1 - Math.exp(-smoothing * dt)
 
         this._overlayWeight = lerp(this._overlayWeight, this._overlayWeightTarget, t)
@@ -700,9 +729,27 @@ export default class Player {
             this.overlaySupportAction.enabled = true
             this.overlaySupportAction.setEffectiveWeight?.(this._overlaySupportWeight)
         }
+        // If pistol_aim overlay is active, ensure we do NOT let a full-body `walking`
+        // clip influence the upper body. If the current baseAction is a full-body
+        // walking animation (name includes 'walk' but not 'legs' and is not
+        // `pistol_walking`), suppress its weight and rely on `pistol_walking` or
+        // the support layer instead.
+        const baseClipName = this.baseAction?.getClip?.()?.name?.toLowerCase?.() || ''
+        const overlayClipName = this.overlayAction?.getClip?.()?.name?.toLowerCase?.() || ''
+        const gunAimActive = overlayClipName.includes('pistol_aim') && this._overlayWeight > 0.01
+
         if (this.baseAction) {
             this.baseAction.enabled = true
-            this.baseAction.setEffectiveWeight?.(this._baseWeight)
+            // Suppress full-body walking while pistol_aim is active (unless the
+            // base clip is the dedicated `pistol_walking` clip).
+            if (gunAimActive && baseClipName.includes('walk') && !baseClipName.includes('legs') && !baseClipName.includes('pistol_walking')) {
+                this.baseAction.setEffectiveWeight?.(0)
+                // Also ensure support layer provides legs if available
+                if (this.overlaySupportAction) this.overlaySupportAction.setEffectiveWeight?.(this._overlaySupportWeight)
+                console.log('Animation: suppressed full-body walking while pistol_aim active ->', baseClipName)
+            } else {
+                this.baseAction.setEffectiveWeight?.(this._baseWeight)
+            }
         }
 
         if (!isGunOverlayActive && this.overlayAction && this._overlayWeight <= 0.01) {
@@ -720,7 +767,11 @@ export default class Player {
         const newAction = resolvedKey ? this.actions[resolvedKey] : null
         if (!newAction || newAction === this.baseAction) return
         if (this.baseAction) this.baseAction.fadeOut(0.2)
-        newAction.reset().fadeIn(0.2).play()
+        // Do not use Three.js fadeIn here; weight blending is handled manually
+        // in _updateAnimationLayerWeights via _baseWeight/_baseWeightTarget.
+        newAction.enabled = true
+        newAction.reset()
+        newAction.play()
         this.baseAction = newAction
     }
 
@@ -728,6 +779,21 @@ export default class Player {
         const resolvedKey = this._resolveActionKey(animationName)
         const newAction = resolvedKey ? this.actions[resolvedKey] : null
         if (!newAction) return
+        // If the requested overlay is already active and still playing (for
+        // LoopOnce one-shot clips like `pistol_aim`), don't reset it on rapid
+        // repeated clicks — allow it to finish. If it's finished, allow replay.
+        if (this.overlayAction === newAction) {
+            const actionTime = this.overlayAction.time || 0
+            const clipDur = this.overlayAction.getClip?.()?.duration || 0
+            const isOneShot = this.overlayAction.loop === THREE.LoopOnce
+            if (!isOneShot || actionTime >= clipDur - 0.001) {
+                // replay allowed: fall through to reset/play
+            } else {
+                // still playing — ignore repeated request
+                return
+            }
+        }
+
         if (this.overlayAction && this.overlayAction !== newAction) this.overlayAction.fadeOut(0.15)
         newAction.setEffectiveWeight(1)
         newAction.timeScale = timeScale
@@ -755,14 +821,29 @@ export default class Player {
     }
 
     updateBaseAnimation(isMoving, isRunning, isGunOverlayActive) {
-        if (isGunOverlayActive && isMoving) {
-            const hasWalkingLegs = !!this._resolveActionKey('walking_legs')
-            this.playBaseAnimation(hasWalkingLegs ? 'walking_legs' : 'walking')
+        const nowMs = this.time?.elapsed ?? 0
+        if (isGunOverlayActive) {
+            if (isMoving) {
+                // Use the dedicated pistol walking animation when aiming and moving
+                this.playBaseAnimation('pistol_walking')
+                // While overlay is active we also keep a short hold to avoid
+                // immediate toggles back to `walking` when overlay briefly ends.
+                this._pistolWalkingHoldUntilMs = Math.max(this._pistolWalkingHoldUntilMs || 0, nowMs + this._pistolWalkingHoldMs)
+            } else {
+                this.playBaseAnimation('idle_upper')
+            }
             return
         }
         if (!isMoving) this.playBaseAnimation('idle')
         else if (isRunning) this.playBaseAnimation('running')
-        else this.playBaseAnimation('walking')
+        else {
+            // If we recently entered pistol walking, hold it for a short buffer
+            if (nowMs < (this._pistolWalkingHoldUntilMs || 0)) {
+                this.playBaseAnimation('pistol_walking')
+            } else {
+                this.playBaseAnimation('walking')
+            }
+        }
     }
 
     setPhysics() {
@@ -811,15 +892,24 @@ export default class Player {
             this._isShootingHeld = isShooting
 
             if (isShooting && !this.isAiming) {
-                const overlayClipLower = this.overlayAction?.getClip?.()?.name?.toLowerCase?.() ?? ''
-                if (!overlayClipLower.includes('gun_aim')) {
-                    this.playOverlayAnimation('gun_aim', { timeScale: 1 })
+                // Only play the pistol overlay if the weapon can fire now or
+                // there's a buffered shot queued. This prevents rapid clicking
+                // from repeatedly resetting the one-shot overlay.
+                const canOrBuffered = this.currentWeapon?.canFire?.(nowMs) || this.currentWeapon?.bufferedShot
+                if (canOrBuffered) {
+                    const overlayClipLower = this.overlayAction?.getClip?.()?.name?.toLowerCase?.() ?? ''
+                    if (!overlayClipLower.includes('pistol_aim')) {
+                        this.playOverlayAnimation('pistol_aim', { timeScale: 1 })
+                    }
                 }
             }
             if (shootStarted && !this.isAiming) {
-                this._oneShotGunAimActive = true
-                this._gunAimHoldUntilMs = 0
-                this.playOverlayAnimation('gun_aim', { timeScale: this._gunAimOneShotTimeScale })
+                const willFireOrBuffered = this.currentWeapon?.canFire?.(nowMs) || this.currentWeapon?.bufferedShot
+                if (willFireOrBuffered) {
+                    this._oneShotGunAimActive = true
+                    this._gunAimHoldUntilMs = 0
+                    this.playOverlayAnimation('pistol_aim', { timeScale: this._gunAimOneShotTimeScale })
+                }
             }
 
             if (shootStarted && !this.currentWeapon.isAutomatic) {
@@ -830,15 +920,8 @@ export default class Player {
             this._weaponWasReloading = isReloadingNow
             this._wasShooting = isShooting
 
-            const activeMesh = Object.values(this.weaponMeshes).find(m => m && m.visible)
-            if (activeMesh) {
-                if (isReloadingNow) {
-                    const cycle = (nowMs % 1000) / 1000
-                    activeMesh.rotation.x = (Math.PI / 2) + (Math.sin(cycle * Math.PI * 2) * 0.5)
-                } else {
-                    activeMesh.rotation.x = activeMesh.name.includes('Placeholder') ? Math.PI / 2 : 0
-                }
-            }
+            // Weapon mesh transformations are handled by the model's animations
+            // No manual rotation needed since model is already set up correctly
 
         } else {
             this._wasShooting = false
@@ -899,7 +982,12 @@ export default class Player {
         const isMoving = inputX !== 0 || inputZ !== 0
         const isRunning = isMoving && this.input.keys.shift
 
+        // --- Animation overlay logic for pistol shooting (from old player.js) ---
         const isHoldingGunAimPose = nowMs < (this._gunAimHoldUntilMs || 0)
+        // Keep overlay active while timer is running
+        if (this._oneShotGunAimActive && !isHoldingGunAimPose) {
+            this._oneShotGunAimActive = false
+        }
         const isGunOverlayActive = this.isAiming || this._isShootingHeld || this._oneShotGunAimActive || isHoldingGunAimPose
         const shouldSupportOverlay = isGunOverlayActive || (this.overlayAction && this._overlayWeight > 0.01)
 
@@ -939,7 +1027,11 @@ export default class Player {
             this.body.velocity.z = 0
         }
 
-        if (shouldSupportOverlay) this.playOverlaySupportAnimation('idle_upper')
+        if (isGunOverlayActive && isMoving) {
+            // When pistol overlay is active and moving, use `pistol_walking` as
+            // the base action; we don't need the legacy walking_legs support.
+            this.stopOverlaySupportAnimation()
+        } else if (shouldSupportOverlay && !isGunOverlayActive) this.playOverlaySupportAnimation('idle_upper')
         else this.stopOverlaySupportAnimation()
 
         this.updateBaseAnimation(isMoving, isRunning, isGunOverlayActive)
