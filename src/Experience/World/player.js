@@ -1,6 +1,7 @@
 import * as THREE from 'three'
 import * as CANNON from 'cannon-es'
 import Experience from '../Experience.js'
+import { ENVIRONMENTS } from '../Utils/AppState.js'
 import Weapon from './Weapon.js'
 
 export default class Player {
@@ -145,6 +146,12 @@ export default class Player {
     }
 
     equipWeapon(weaponKey) {
+        // Disable weapon switching when not in GAME environment
+        if (this.experience?.appState && this.experience.appState.current_env !== ENVIRONMENTS.GAME) {
+            console.log('🔒 Weapons disabled outside GAME environment')
+            return
+        }
+
         // Check if player owns this weapon
         if (!this.inventory.includes(weaponKey)) {
             return
@@ -192,9 +199,12 @@ export default class Player {
     }
 
     setAiming(isAiming) {
+        // Prevent aiming outside of GAME env
+        if (this.experience?.appState && this.experience.appState.current_env !== ENVIRONMENTS.GAME) return
         if (this.isAiming === isAiming) return
         this.isAiming = isAiming
-        this.experience.camera.setAimMode(isAiming)
+        // Pass `true` to indicate right-click aiming should use widened FOV
+        this.experience.camera.setAimMode(isAiming, true)
 
         if (isAiming) {
             this.playOverlayAnimation('pistol_aim', { timeScale: 1 })
@@ -268,6 +278,8 @@ export default class Player {
     }
 
     shoot() {
+        // Disallow shooting outside of GAME env
+        if (this.experience?.appState && this.experience.appState.current_env !== ENVIRONMENTS.GAME) return false
         if (!this.currentWeapon) return false
 
         const nowMs = this.time?.elapsed ?? 0
@@ -368,6 +380,8 @@ export default class Player {
     }
 
     reload() {
+        // Disallow reloading outside of GAME env
+        if (this.experience?.appState && this.experience.appState.current_env !== ENVIRONMENTS.GAME) return
         if (!this.currentWeapon) return
         const nowMs = this.time?.elapsed ?? 0
         if (typeof this.currentWeapon.startReload === 'function') {
@@ -501,6 +515,13 @@ export default class Player {
     }
 
     updateWeaponHud() {
+        // Hide weapon HUD when not in GAME environment
+        if (this.experience?.appState && this.experience.appState.current_env !== ENVIRONMENTS.GAME) {
+            if (this.hudAmmoEl) this.hudAmmoEl.style.display = 'none'
+            if (this.hudReloadingEl) this.hudReloadingEl.style.display = 'none'
+            return
+        }
+
         if (!this.hudAmmoEl && !this.hudReloadingEl) return
 
         if (!this.currentWeapon) {

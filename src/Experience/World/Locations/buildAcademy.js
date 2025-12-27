@@ -234,6 +234,62 @@ export default function buildAcademy(state) {
       }
     }
 
+    // --- Instanced bushes (placed as empties in the academy model) ---
+    // Find empties tagged with userData.asset_type === 'bush' and instance the bush model there.
+    model.updateMatrixWorld(true);
+
+    const bushResource = this.resources.items.bushModel;
+    try {
+      const bushMatrices = [];
+      const dummy = new THREE.Object3D();
+
+      model.traverse((child) => {
+        if (child.userData && child.userData.asset_type === 'bush') {
+          dummy.position.set(0, 0, 0);
+          dummy.quaternion.set(0, 0, 0, 1);
+          dummy.scale.set(1, 1, 1);
+
+          child.getWorldPosition(dummy.position);
+          child.getWorldQuaternion(dummy.quaternion);
+          child.getWorldScale(dummy.scale);
+
+          dummy.updateMatrix();
+          bushMatrices.push(dummy.matrix.clone());
+        }
+      });
+
+      if (bushMatrices.length > 0 && bushResource?.scene) {
+        const bushScene = bushResource.scene;
+        const bushMeshes = [];
+        bushScene.traverse((m) => {
+          if (m.isMesh) bushMeshes.push(m);
+        });
+
+        for (const bushMesh of bushMeshes) {
+          bushMesh.updateMatrixWorld(true);
+
+          const instanced = new THREE.InstancedMesh(
+            bushMesh.geometry,
+            bushMesh.material,
+            bushMatrices.length
+          );
+          instanced.name = `academy-bush-${bushMesh.name || 'mesh'}`;
+          instanced.castShadow = true;
+          instanced.receiveShadow = true;
+
+          for (let i = 0; i < bushMatrices.length; i++) {
+            instanced.setMatrixAt(i, bushMatrices[i]);
+          }
+
+          instanced.instanceMatrix.needsUpdate = true;
+          state.group.add(instanced);
+        }
+      }
+    } catch (e) {
+      // Fail silently so location still loads if bush resource absent or malformed
+      console.warn('Failed to create instanced bushes:', e);
+    }
+
     model.traverse((child) => {
       if (child.isMesh) {
         child.castShadow = true;

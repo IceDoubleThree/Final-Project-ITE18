@@ -151,13 +151,15 @@ export default class SoundHandler {
 			this._loopTimer = null
 		}
 
-		const startVolume = typeof audio.volume === 'number' ? audio.volume : 1
+		// Ensure startVolume is within [0,1] to avoid IndexSizeError in some browsers
+		const startVolume = typeof audio.volume === 'number' ? Math.max(0, Math.min(1, audio.volume)) : 1
 		const startTime = performance.now()
 
 		const step = (now) => {
 			if (this._audio !== audio) return
 			const t = Math.min(1, (now - startTime) / durationMs)
-			audio.volume = Math.max(0, startVolume * (1 - t))
+			// Clamp computed volume to [0,1]
+			audio.volume = Math.max(0, Math.min(1, startVolume * (1 - t)))
 			if (t < 1) {
 				this._fadeRaf = requestAnimationFrame(step)
 				return

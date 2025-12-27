@@ -40,6 +40,11 @@
             path: '/models/lodbillboard_summer_trees_pack.glb'
         },
         {
+            name: 'bushModel',
+            type: 'gltfModel',
+            path: '/models/assets/bush.glb'
+        },
+        {
             name: 'storeSky',
             type: 'texture',
             path: '/textures/citrus_orchard_road_puresky_2k.png'

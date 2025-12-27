@@ -69,6 +69,8 @@ export default class Camera {
             defaultFov: 35,
             // Less zoom-in while aiming
             aimFov: 30,
+            // Optional wide-FOV aim mode (used for right-click widen)
+            aimWideFov: 50,
             fov: 35,
             targetFov: 35,
 
@@ -191,13 +193,18 @@ export default class Camera {
         this.instance.updateProjectionMatrix()
     }
 
-    setAimMode(isActive) {
+    setAimMode(isActive, widen = false) {
         this.aim.active = isActive
         // Do NOT pan the camera when aiming. Keep offsets neutral.
         this.aim.targetOffset = 0
 
-        // Zoom in toward the crosshair.
-        this.aim.targetFov = isActive ? this.aim.aimFov : this.aim.defaultFov
+        // If caller requests a widened FOV for this aim (right-click), use
+        // the configured wide FOV. Otherwise use the normal aimFov.
+        if (isActive) {
+            this.aim.targetFov = widen ? this.aim.aimWideFov : this.aim.aimFov
+        } else {
+            this.aim.targetFov = this.aim.defaultFov
+        }
 
         // Smoothly blend offsets out/in.
         this.aim.targetBlend = isActive ? 1 : 0

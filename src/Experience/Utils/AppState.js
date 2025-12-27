@@ -11,10 +11,17 @@ const VALID_ENVS = new Set(Object.values(ENVIRONMENTS))
 export default class AppState extends EventEmitter {
 	constructor() {
 		super()
-		/** @type {'main_menu'|'lobby'|'game'} */
+			/** @type {'main_menu'|'lobby'|'game'} */
 		this.current_env = ENVIRONMENTS.MAIN_MENU
 		/** @type {string|null} */
 		this.current_loc = null
+
+			// Log initial app state for debugging
+			try {
+				console.log(`[AppState] initialized env=${this.current_env} loc=${this.current_loc}`)
+			} catch (e) {
+				// ignore logging errors in restricted environments
+			}
 	}
 
 	setEnv(nextEnv) {
@@ -24,16 +31,24 @@ export default class AppState extends EventEmitter {
 			return
 		}
 		if (this.current_env === env) return
-		const prev = this.current_env
-		this.current_env = env
+			const prev = this.current_env
+			this.current_env = env
+			// Log env transition
+			try {
+				console.log(`[AppState] env change: ${prev} -> ${env}`)
+			} catch (e) {}
 		this.trigger('env', [env, prev])
 	}
 
 	setLoc(nextLoc) {
 		const loc = nextLoc == null ? null : String(nextLoc)
 		if (this.current_loc === loc) return
-		const prev = this.current_loc
-		this.current_loc = loc
+			const prev = this.current_loc
+			this.current_loc = loc
+			// Log location transition
+			try {
+				console.log(`[AppState] loc change: ${prev} -> ${loc}`)
+			} catch (e) {}
 		this.trigger('loc', [loc, prev])
 	}
 }
