@@ -35,6 +35,11 @@
             path: '/models/Forest.glb' 
         },
         {
+            name: 'roadToAcademyModel',
+            type: 'gltfModel',
+            path: '/models/road_to_academy.glb'
+        },
+        {
             name: 'summerTreeBillboards',
             type: 'gltfModel',
             path: '/models/lodbillboard_summer_trees_pack.glb'
@@ -43,6 +48,56 @@
             name: 'bushModel',
             type: 'gltfModel',
             path: '/models/assets/bush.glb'
+        },
+        {
+            name: 'boulderLModel',
+            type: 'gltfModel',
+            path: '/models/assets/boulder_L.glb'
+        },
+        {
+            name: 'boulderL2Model',
+            type: 'gltfModel',
+            path: '/models/assets/boulder_L2.glb'
+        },
+        {
+            name: 'boulderMModel',
+            type: 'gltfModel',
+            path: '/models/assets/boulder_M.glb'
+        },
+        {
+            name: 'boulderM2Model',
+            type: 'gltfModel',
+            path: '/models/assets/boulder_M2.glb'
+        },
+        {
+            name: 'boulderSModel',
+            type: 'gltfModel',
+            path: '/models/assets/boulder_S.glb'
+        },
+        {
+            name: 'boulderS2Model',
+            type: 'gltfModel',
+            path: '/models/assets/boulder_S2.glb'
+        },
+        {
+            name: 'tree1Model',
+            type: 'gltfModel',
+            path: '/models/assets/tree1.glb'
+        },
+        {
+            name: 'tree2Model',
+            type: 'gltfModel',
+            path: '/models/assets/tree2.glb'
+        },
+        {
+            name: 'tree3Model',
+            type: 'gltfModel',
+            path: '/models/assets/tree3.glb'
+        },
+        {
+            name: 'tree4Model',
+            type: 'gltfModel',
+            path: '/models/assets/tree4.glb'
         },
         {
             name: 'storeSky',

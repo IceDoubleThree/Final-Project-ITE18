@@ -91,7 +91,18 @@ export default function buildStore(state) {
       options: [
         {
           label: "Start Game",
-          onSelect: () => this.startRun(),
+          onSelect: () => {
+            // Start the run using the configured first level (so ordering is controlled by LevelManager)
+            const gm = this.experience?.game;
+            const lm = gm?.levelManager;
+            const firstKey = (lm && lm.levels && lm.levels[0] && lm.levels[0].locationKey) || 'Academy';
+            if (this.experience && typeof this.experience.startRun === 'function') {
+              this.experience.startRun(firstKey);
+            } else {
+              // Fallback
+              this.startRun();
+            }
+          },
         },
       ],
     })

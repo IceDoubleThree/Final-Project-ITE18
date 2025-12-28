@@ -99,14 +99,14 @@ export default class Camera {
         this.setControls()
         this.setPointerLock()
     }
-
+    
     setInstance() {
         this.instance = new THREE.PerspectiveCamera(
             this.aim.defaultFov,
             this.sizes.width / this.sizes.height,
             // Smaller near plane reduces close-up clipping (prevents player vanishing when camera is forced close)
             0.005,
-            300
+            2000 //render_distance
         )
         // Default position before player loads
         this.instance.position.set(6, 4, 8)
@@ -125,7 +125,7 @@ export default class Camera {
 
         // Distance constraints (used by our custom zoom)
         this.controls.minDistance = 3
-        this.controls.maxDistance = 15
+        this.controls.maxDistance = 200
 
         // Target exists for other systems (e.g. camera clamping in World)
         this.controls.target.set(0, 2.2, 0)

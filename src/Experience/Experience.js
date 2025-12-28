@@ -315,13 +315,35 @@ export default class Experience
 
         // 4. Start game once world and resources are ready
         if (this._pendingStartGame && this.world && this.world.environment) {
-            // If a location was chosen from the debug menu, load it now.
-            if (this._pendingStartLocationKey) {
-                this.world.loadLocation(this._pendingStartLocationKey)
-            }
+            // Prevent multiple loader calls from repeated ticks
+            if (!this._pendingLoaderShown) {
+                this._pendingLoaderShown = true
 
-            this._pendingStartLocationKey = null
-            this._pendingStartGame = false
+                const doLoad = () => {
+                    try {
+                        if (this._pendingStartLocationKey) {
+                            this.world.loadLocation(this._pendingStartLocationKey)
+                        }
+                    } finally {
+                        this._pendingStartLocationKey = null
+                        this._pendingStartGame = false
+                        this._pendingLoaderShown = false
+                    }
+                }
+
+                if (typeof window !== 'undefined' && typeof window.showMiniLoader === 'function') {
+                    // Randomize 2-5s to mirror LevelManager behaviour
+                    const minMs = 2000
+                    const maxMs = 5000
+                    const randMs = Math.floor(Math.random() * (maxMs - minMs + 1)) + minMs
+                    const label = this._pendingStartLocationKey ? `Entering ${this._pendingStartLocationKey}...` : 'Entering...'
+                    // Show the loader but do not wait for it — start loading immediately.
+                    try { window.showMiniLoader(randMs, label).catch(() => {}); } catch (e) { /* ignore */ }
+                    doLoad()
+                } else {
+                    doLoad()
+                }
+            }
         }
     }
 

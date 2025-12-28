@@ -52,21 +52,32 @@ export default class GameManager {
     this.levelManager.statistics = this.statistics;
 
     // --- Wire LevelManager signals to World ---
-    const world = this.experience?.world;
-    if (world && this.levelManager) {
+    // Attach handlers regardless of whether World exists yet. Each handler
+    // resolves `this.experience.world` at runtime so late World creation
+    // (Experience creates GameManager before World) is handled.
+    if (this.levelManager) {
       this.levelManager.on('levelStart', (levelData) => {
         // Resume total_game_time when starting a new level
         this.timerPaused = false;
         this.timerFrozen = false;
         console.log('⏱️ Total game time resumed - Level started');
-        if (typeof world.onLevelStart === 'function') world.onLevelStart(levelData);
+        const worldNow = this.experience?.world;
+        console.log('[GameManager] forward levelStart -> world present?', !!worldNow, 'onLevelStart?', typeof (worldNow && worldNow.onLevelStart));
+        if (worldNow && typeof worldNow.onLevelStart === 'function') {
+          try { worldNow.onLevelStart(levelData); } catch (e) { console.warn('[GameManager] world.onLevelStart threw', e); }
+        }
       });
+
       this.levelManager.on('spawnItems', (count) => {
-        if (typeof world.onSpawnItems === 'function') world.onSpawnItems(count);
+        const worldNow = this.experience?.world;
+        if (worldNow && typeof worldNow.onSpawnItems === 'function') worldNow.onSpawnItems(count);
       });
+
       this.levelManager.on('spawnBoss', () => {
-        if (typeof world.onSpawnBoss === 'function') world.onSpawnBoss();
+        const worldNow = this.experience?.world;
+        if (worldNow && typeof worldNow.onSpawnBoss === 'function') worldNow.onSpawnBoss();
       });
+
       this.levelManager.on('objectiveComplete', () => {
         // Pause total_game_time when objective is complete (until next level)
         this.timerPaused = true;
@@ -76,8 +87,10 @@ export default class GameManager {
           this.timerEl.textContent = this.formatElapsed(this.total_game_time);
         }
         console.log('⏸️ Total game time paused & frozen - Objective complete');
-        if (typeof world.onObjectiveComplete === 'function') world.onObjectiveComplete();
+        const worldNow = this.experience?.world;
+        if (worldNow && typeof worldNow.onObjectiveComplete === 'function') worldNow.onObjectiveComplete();
       });
+
       this.levelManager.on('levelComplete', () => {
         // Pause timer when level completes
         this.timerPaused = true;
@@ -86,13 +99,18 @@ export default class GameManager {
         // Statistics are already tracked by LevelManager via statistics tracker
         // Just increment levels completed
         this.statistics.total.levelsCompleted++;
-        if (typeof world.onLevelComplete === 'function') world.onLevelComplete();
+        const worldNow = this.experience?.world;
+        if (worldNow && typeof worldNow.onLevelComplete === 'function') worldNow.onLevelComplete();
       });
+
       this.levelManager.on('gameComplete', () => {
-        if (typeof world.onGameComplete === 'function') world.onGameComplete();
+        const worldNow = this.experience?.world;
+        if (worldNow && typeof worldNow.onGameComplete === 'function') worldNow.onGameComplete();
       });
+
       this.levelManager.on('gameOver', (reason) => {
-        if (typeof world.onGameOver === 'function') world.onGameOver(reason);
+        const worldNow = this.experience?.world;
+        if (worldNow && typeof worldNow.onGameOver === 'function') worldNow.onGameOver(reason);
       });
     }
   }

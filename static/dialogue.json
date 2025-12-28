@@ -22,5 +22,13 @@
         { "speaker": "NPC2", "text": "Hmph. What do you want?" }
       ]
     }
+    ,
+    "next_level": {
+      "id": "next_level",
+      "character": "Guide",
+      "sequence": [
+        { "speaker": "Guide", "text": "You completed the objective. Ready to proceed to the next level?" }
+      ]
+    }
   }
 }

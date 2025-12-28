@@ -9,16 +9,27 @@ export default class LevelManager extends EventEmitter {
         this.levels = [
             {
                 id: 1,
+
+                name: "Road To Academy",
+                locationKey: "Road2Academy",
+                type: 'reach_warp', // Objective: reach the warp in the world
+                difficulty: 'easy',
+                timeLimit: 600, // fallback
+                exitTime: 30,
+                objectiveTarget: 1
+            },
+            {
+                id: 2,
                 name: "Academy",
                 locationKey: "Academy",
                 type: 'timed_survival', // Objective: Survive for time duration
                 difficulty: 'easy',
                 timeLimit: 600, // 10 minutes (max level time)
                 exitTime: 30, // Time to reach exit after objective
-                objectiveTarget: 10 // Survive for 2 minutes (120 seconds)
+                objectiveTarget: 120 // Survive for 2 minutes (120 seconds)
             },
             {
-                id: 2,
+                id: 3,
                 name: "PlaceHolder",
                 locationKey: "Forest",
                 type: 'survival',
@@ -28,7 +39,7 @@ export default class LevelManager extends EventEmitter {
                 objectiveTarget: 25 // Kill 25 enemies
             },
             {
-                id: 3,
+                id: 4,
                 name: "PlaceHolder 2",
                 locationKey: "Store",
                 type: 'collection', // Objective: Find items
@@ -38,7 +49,7 @@ export default class LevelManager extends EventEmitter {
                 objectiveTarget: 5 // Find 5 items
             },
             {
-                id: 4,
+                id: 5,
                 name: "Boss Battle",
                 locationKey: "StageDesign",
                 type: 'boss',
@@ -48,6 +59,9 @@ export default class LevelManager extends EventEmitter {
                 objectiveTarget: 1
             }
         ]
+
+        // Internal flag used by world builders to signal warp reached
+        this._warpReached = false
 
         this.currentLevelIndex = 0
         this.currentProgress = 0 // Deprecated - use statistics tracker instead
@@ -155,6 +169,7 @@ export default class LevelManager extends EventEmitter {
     }
 
     startLevel(index) {
+        console.log('[LevelManager] startLevel called with index=', index)
         if (index >= this.levels.length) {
             console.log('🎉 ALL LEVELS COMPLETED!')
             this.trigger('gameComplete')
@@ -162,51 +177,72 @@ export default class LevelManager extends EventEmitter {
         }
 
         this.currentLevelIndex = index
+        const levelDataPreview = this.levels[index] || null
+        console.log('[LevelManager] starting level', index, levelDataPreview?.locationKey, levelDataPreview?.name)
+        // reset warp flag when starting a level
+        this._warpReached = false
         const levelData = this.levels[index]
 
-        // Initialize per-level statistics if not exists
-        if (this.statistics) {
-            if (!this.statistics.perLevel[index]) {
-                this.statistics.perLevel[index] = {
-                    kills: 0,
-                    items: 0,
-                    completed: false,
+        // Do the actual start logic after a short (dummy) loading period
+        const doStart = () => {
+            // Initialize per-level statistics if not exists
+            if (this.statistics) {
+                if (!this.statistics.perLevel[index]) {
+                    this.statistics.perLevel[index] = {
+                        kills: 0,
+                        items: 0,
+                        completed: false,
+                    }
+                } else {
+                    // Reset stats for level restart
+                    this.statistics.perLevel[index].kills = 0
+                    this.statistics.perLevel[index].items = 0
+                    this.statistics.perLevel[index].completed = false
                 }
+            }
+
+            // Reset State
+            this.currentProgress = 0 // Keep for backward compatibility
+            this.isExitPhase = false
+            this.isActive = true
+            this.timeLeft = levelData.timeLimit
+
+            // Initialize objective time for timed objectives
+            if (levelData.type === 'timed_survival') {
+                this.objectiveTimeLeft = levelData.objectiveTarget // Time in seconds
             } else {
-                // Reset stats for level restart
-                this.statistics.perLevel[index].kills = 0
-                this.statistics.perLevel[index].items = 0
-                this.statistics.perLevel[index].completed = false
+                this.objectiveTimeLeft = 0
+            }
+
+            // Update UI
+            this.updateUI()
+
+            console.log(`🚀 Starting Level ${levelData.id}: ${levelData.name}`)
+
+            // Notify World/Spawner to set up difficulty and enemies
+            this.trigger('levelStart', levelData)
+
+            // Special triggers
+            if (levelData.type === 'collection') {
+                // Tell World to spawn collectable items
+                this.trigger('spawnItems', levelData.objectiveTarget)
+            } else if (levelData.type === 'boss') {
+                this.trigger('spawnBoss')
             }
         }
 
-        // Reset State
-        this.currentProgress = 0 // Keep for backward compatibility
-        this.isExitPhase = false
-        this.isActive = true
-        this.timeLeft = levelData.timeLimit
+        // Random dummy load between 2-5s
+        const minMs = 2000
+        const maxMs = 5000
+        const randMs = Math.floor(Math.random() * (maxMs - minMs + 1)) + minMs
 
-        // Initialize objective time for timed objectives
-        if (levelData.type === 'timed_survival') {
-            this.objectiveTimeLeft = levelData.objectiveTarget // Time in seconds
+        if (typeof window !== 'undefined' && typeof window.showMiniLoader === 'function') {
+            // Show the loader but don't delay the level start; start immediately
+            try { window.showMiniLoader(randMs, `Loading ${levelData.name}...`).catch(() => {}); } catch (e) { /* ignore */ }
+            doStart()
         } else {
-            this.objectiveTimeLeft = 0
-        }
-
-        // Update UI
-        this.updateUI()
-
-        console.log(`🚀 Starting Level ${levelData.id}: ${levelData.name}`)
-
-        // Notify World/Spawner to set up difficulty and enemies
-        this.trigger('levelStart', levelData)
-
-        // Special triggers
-        if (levelData.type === 'collection') {
-            // Tell World to spawn collectable items
-            this.trigger('spawnItems', levelData.objectiveTarget)
-        } else if (levelData.type === 'boss') {
-            this.trigger('spawnBoss')
+            // Fallback: setTimeout then start
+            setTimeout(doStart, randMs)
         }
     }
 
@@ -393,7 +429,10 @@ export default class LevelManager extends EventEmitter {
         let objectiveComplete = false
 
         // Check objective based on level type
-        if (level.type === 'timed_survival') {
+        if (level.type === 'reach_warp') {
+            objectiveComplete = !!this._warpReached
+            if (objectiveComplete) console.log('✅ Warp reached — objective complete')
+        } else if (level.type === 'timed_survival') {
             // Objective complete when time runs out (survived the duration)
             objectiveComplete = this.objectiveTimeLeft <= 0
             if (objectiveComplete) {
@@ -412,6 +451,11 @@ export default class LevelManager extends EventEmitter {
             this.trigger('objectiveComplete') // World should enable the Exit Zone mesh
             this.isExitPhase = true
             this.timeLeft = level.exitTime // Set timer to 30 seconds
+
+            // For reach-warp levels we show the objective-complete state and
+            // allow external code (the warp trigger) to call `victory()` after
+            // a short delay so the player can see the overlay before the next
+            // level loads.
 
             // Show objective complete overlay
             const levelName = level.name || 'Level'
@@ -448,7 +492,14 @@ export default class LevelManager extends EventEmitter {
 
         console.log("🏆 Level Cleared!")
         this.trigger('levelComplete') // Show victory screen or fade out
-        this.showLevelCompleteOverlay('Level Complete!')
+        // If objective overlay is already visible (e.g. 'Objective Complete'),
+        // update its text instead of re-showing it to avoid two successive
+        // overlay animations/messages.
+        if (this.levelCompleteOverlay?.isVisible) {
+            if (this.levelCompleteOverlay.text) this.levelCompleteOverlay.text.textContent = 'Level Complete!'
+        } else {
+            this.showLevelCompleteOverlay('Level Complete!')
+        }
         // Wait 3 seconds, then start next level
         setTimeout(() => {
             this.hideLevelCompleteOverlay()

@@ -1,3 +1,29 @@
+/*
+    IMPORTANT MODIFICATION WARNING
+
+    If you are an automated agent or developer about to modify this file,
+    READ THIS FIRST:
+
+    - The player's `pistol` is part of the player model hierarchy and
+        is not a separate model. It is shown/hidden by toggling mesh visibility (see `this.weaponMeshes.pistol`).
+        DO NOT remove or replace the pistol mesh logic without updating
+        the visibility handling everywhere the code expects it.
+
+    - Animation blending and weight logic is intentionally delicate.
+        Do NOT change animation weights, timeScale, blend durations, or
+        layer behaviour (especially `playOverlayAnimation`, `_updateAnimationLayerWeights`)
+        unless you fully understand the mixer layering and consequences.
+
+    - Weapon meshes may be placeholder created in `_createPlaceholderWeaponMeshes()`
+        and are referenced elsewhere; changing names or parenting can break
+        lookups in `setMesh()` and `getBarrelPosition()`.
+
+    - When modifying input, shooting, or damage application, ensure you
+        update `LevelManager` notifications (kills) and relevant UI updates.
+
+    - If unsure, ask a human reviewer before changing animation/weapon code.
+
+*/
 import * as THREE from 'three'
 import * as CANNON from 'cannon-es'
 import Experience from '../Experience.js'

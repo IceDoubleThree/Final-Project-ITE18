@@ -30,6 +30,9 @@ export default function buildAcademy(state) {
 
   // Capture when level mechanics begin (Time.elapsed keeps running across locations).
   let levelStartTimeMs = null;
+  // Delay before any enemies spawn (in ms)
+  const spawnStartDelayMs = 8000; // 8 seconds
+  let spawnStartTimeMs = null;
 
   const clamp01 = (v) => Math.min(1, Math.max(0, v));
 
@@ -60,14 +63,40 @@ export default function buildAcademy(state) {
       state.origin.z + -64
     );
 
+    // Use the same objective radius as other warp triggers for consistency
+    const objectiveRadius = 2;
+
     state.portals.push(
       new Portal(this, warpPos, null, "Next Level", 0xffffff, {
-        size: new THREE.Vector3(2, 2.5, 2),
-        interactionRadius: 2,
+        size: new THREE.Vector3(objectiveRadius * 2, 2, objectiveRadius * 2),
+        interactionRadius: objectiveRadius,
         options: [
           {
             label: "Next Level",
-            onSelect: () => console.log("Next level not implemented yet."),
+            onSelect: () => {
+              const game = this.experience?.game;
+              const lm = game?.levelManager;
+
+              // If dialogue system exists, show a confirmation dialogue before advancing
+              const dlg = this.experience?.dialogue;
+              if (dlg && typeof dlg.read === 'function') {
+                dlg.read('next_level');
+                const handler = () => {
+                  window.removeEventListener('dialogueClosed', handler);
+                  if (lm) {
+                    lm.startLevel(lm.currentLevelIndex + 1);
+                  } else {
+                    // Fallback: load Academy's default next scene
+                    if (this.loadLocation) this.loadLocation('StageDesign');
+                  }
+                };
+                window.addEventListener('dialogueClosed', handler);
+                return;
+              }
+
+              // Fallback: start next level immediately
+              if (lm) lm.startLevel(lm.currentLevelIndex + 1);
+            },
           },
         ],
       })
@@ -420,7 +449,11 @@ export default function buildAcademy(state) {
 
       const nowMs = this.experience?.time?.elapsed ?? 0;
 
-      if (!Number.isFinite(levelStartTimeMs)) levelStartTimeMs = nowMs;
+      // Initialize delayed spawn start timestamp on first tick
+      if (spawnStartTimeMs === null) spawnStartTimeMs = nowMs + spawnStartDelayMs;
+
+      // Set levelStartTime only when spawning actually begins (after delay)
+      if (!Number.isFinite(levelStartTimeMs) && nowMs >= spawnStartTimeMs) levelStartTimeMs = nowMs;
 
       // Check if level is complete via level manager
       const levelComplete = levelManager.isExitPhase || false;
@@ -442,6 +475,10 @@ export default function buildAcademy(state) {
 
       // Spawn initial wave: both walkers and runners across spawn points
       if (!initialWaveSpawned) {
+        if (nowMs < spawnStartTimeMs) {
+          // Not ready to spawn yet; wait until delay passes
+          return;
+        }
         spawnPoints.forEach((p) => {
           // One walker and one runner per spawn point
           state.enemies.push(new Enemy(this, { type: EnemyTypes.WALKER, position: p }));
@@ -453,12 +490,14 @@ export default function buildAcademy(state) {
 
       // Maintain a steady number of enemies until the level completes.
       const desiredAlive = spawnPoints.length * 2;
-      if (state.enemies.length < desiredAlive && spawnPoints.length > 0) {
-        if (nowMs >= nextSpawnTimeMs) {
-          nextSpawnTimeMs = nowMs + getSpawnIntervalMs(nowMs);
-          const p = spawnPoints[nextSpawnIndex % spawnPoints.length];
-          nextSpawnIndex++;
-          spawnEnemyAt(p);
+      if (nowMs >= spawnStartTimeMs) {
+        if (state.enemies.length < desiredAlive && spawnPoints.length > 0) {
+          if (nowMs >= nextSpawnTimeMs) {
+            nextSpawnTimeMs = nowMs + getSpawnIntervalMs(nowMs);
+            const p = spawnPoints[nextSpawnIndex % spawnPoints.length];
+            nextSpawnIndex++;
+            spawnEnemyAt(p);
+          }
         }
       }
     },

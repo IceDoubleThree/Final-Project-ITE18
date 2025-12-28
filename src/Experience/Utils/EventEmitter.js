@@ -97,8 +97,8 @@ export default class EventEmitter {
         let finalResult = null
         let result = null
 
-        // Default args
-        const args = !(_args instanceof Array) ? [] : _args
+        // Default args: accept either an array of args, a single arg, or undefined
+        const args = (typeof _args === 'undefined') ? [] : ((_args instanceof Array) ? _args : [_args])
 
         // Resolve names (should only have one event)
         let name = this.resolveNames(_name)

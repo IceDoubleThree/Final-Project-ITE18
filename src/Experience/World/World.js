@@ -13,6 +13,7 @@ import buildBlankStageImpl from "./Locations/buildBlankStage.js";
 import buildStoreImpl from "./Locations/buildStore.js";
 import buildForestImpl from "./Locations/buildForest.js";
 import buildAcademyImpl from "./Locations/buildAcademy.js";
+import buildRoad2AcademyImpl from "./Locations/buildRoad2Academy.js";
 
 export default class World {
   constructor() {
@@ -350,8 +351,18 @@ export default class World {
         spawnOffset: new THREE.Vector3(40, 0, 0),
         size: { width: 80, depth: 80 },
         background: "#101015",
-        backgroundTextureKey: "storeSky",
+        backgroundTextureKey: "daylightSky",
         build: (state) => this.buildAcademy(state),
+      },
+      Road2Academy: {
+        key: "Road2Academy",
+        origin: new THREE.Vector3(0, 0, 0),
+        spawnOffset: new THREE.Vector3(0, 0, 0),
+        size: { width: 200, depth: 200 },
+        background: "#101015",
+        backgroundTextureKey: "daylightSky",
+        fog: { color: "#4747472a", near: 400, far:450 },
+        build: (state) => this.buildRoad2Academy(state),
       },
       StageDesign: {
         key: "StageDesign",
@@ -372,7 +383,7 @@ export default class World {
         origin: new THREE.Vector3(0, 0, 0),
         size: { width: 50, depth: 50 },
         background: "skyblue",
-        backgroundTextureKey: "storeSky",
+        backgroundTextureKey: "daylightSky",
         build: (state) => this.buildStore(state),
       },
       Forest: {
@@ -552,6 +563,7 @@ export default class World {
   buildStore(state) { return buildStoreImpl.call(this, state); }
   buildForest(state) { return buildForestImpl.call(this, state); }
   buildAcademy(state) { return buildAcademyImpl.call(this, state); }
+  buildRoad2Academy(state) { return buildRoad2AcademyImpl.call(this, state); }
 
   update() {
     if (this.isPhysicsActive && this.physicsWorld) {
@@ -568,11 +580,16 @@ export default class World {
     if (this.physicsDebug && this.physicsDebug.enabled) this.updatePhysicsDebug();
     if (this.playerDebugElement && this.player && this.player.mesh) {
       const { x, y, z } = this.player.mesh.position;
-      this.playerDebugElement.textContent = `Player: x=${x.toFixed(2)} y=${y.toFixed(2)} z=${z.toFixed(2)}`;
+      // Show yaw rotation (degrees) for easier debugging
+      const q = this.player.mesh.quaternion;
+      const e = new THREE.Euler().setFromQuaternion(q, 'YXZ');
+      const yawDeg = THREE.MathUtils.radToDeg(e.y || 0);
+      this.playerDebugElement.textContent = `Player: x=${x.toFixed(2)} y=${y.toFixed(2)} z=${z.toFixed(2)} | rot=${yawDeg.toFixed(1)}°`;
     }
   }
   // --- Event Handlers for LevelManager signals ---
   onLevelStart(levelData) {
+    console.log('[World] onLevelStart called for', levelData && levelData.locationKey)
     // Only load the location if it's not already loaded
     if (
       levelData &&

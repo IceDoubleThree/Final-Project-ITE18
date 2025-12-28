@@ -327,3 +327,85 @@ if (btnMute) {
 		setMusicMuted(next)
 	})
 }
+
+// --- Mini loader helpers (bottom-right) ---
+window.showMiniLoader = function(durationMs = 3000, text = 'Loading...') {
+	const el = document.getElementById('mini-loader')
+	if (!el) return Promise.resolve()
+
+	const txt = el.querySelector('.mini-loader-text')
+	if (txt) txt.textContent = String(text ?? 'Loading...')
+
+	el.style.display = 'flex'
+	// allow CSS transition
+	requestAnimationFrame(() => el.classList.add('visible'))
+
+	return new Promise((resolve) => {
+		const ms = Math.max(0, Number(durationMs) || 0)
+		// Remember whether time was already paused so we don't override previous state
+		const timeObj = window.experience?.time
+		const previouslyPaused = timeObj ? Boolean(timeObj.paused) : true
+
+		// Pause the main time loop so updates/physics/timers stop
+		try {
+			if (timeObj && !previouslyPaused && typeof timeObj.pause === 'function') {
+				timeObj.pause()
+				// Remember that we paused it here
+				el._miniLoaderPreviouslyPaused = false
+			} else if (timeObj) {
+				// Already paused before showing
+				el._miniLoaderPreviouslyPaused = true
+			}
+		} catch (e) {
+			console.warn('Failed to pause time for mini loader', e)
+			el._miniLoaderPreviouslyPaused = true
+		}
+
+		const hideAfter = () => {
+			el.classList.remove('visible')
+			setTimeout(() => {
+				el.style.display = 'none'
+
+				// Resume the main time loop if we paused it here
+				try {
+					if (timeObj && !previouslyPaused && typeof timeObj.resume === 'function') {
+						timeObj.resume()
+					}
+				} catch (e) {
+					console.warn('Failed to resume time after mini loader', e)
+				}
+
+				resolve()
+			}, 220)
+		}
+
+		// In case caller wants to externally hide earlier, expose a reference
+		const timeout = setTimeout(hideAfter, ms)
+		// Attach cancel handle for external hide if needed
+		el._miniLoaderTimeout = timeout
+	})
+}
+
+window.hideMiniLoader = function() {
+	const el = document.getElementById('mini-loader')
+	if (!el) return
+	if (el._miniLoaderTimeout) {
+		clearTimeout(el._miniLoaderTimeout)
+		el._miniLoaderTimeout = null
+	}
+
+	// If we hid manually, resume time as well (only if we paused it when showing)
+	const timeObj = window.experience?.time
+	const previouslyPaused = el._miniLoaderPreviouslyPaused
+	el.classList.remove('visible')
+	setTimeout(() => {
+		if (el) el.style.display = 'none'
+		try {
+			if (timeObj && previouslyPaused === false && typeof timeObj.resume === 'function') {
+				timeObj.resume()
+			}
+		} catch (e) {
+			console.warn('Failed to resume time after manual hide', e)
+		}
+	}, 220)
+}
