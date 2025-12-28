@@ -140,5 +140,11 @@
             name: 'runnerModel',
             type: 'gltfModel',
             path: '/models/runner.glb'
-        }
+        },
+        {
+            name: 'walkerModel',
+            type: 'gltfModel',
+            path: '/models/walker.glb'
+        }   
+
     ]

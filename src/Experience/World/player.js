@@ -125,8 +125,13 @@ export default class Player {
         this._gunAimHoldUntilMs = 0
         this._gunAimOneShotTimeScale = 2
         this._gunAimOneShotHoldMs = 1000
+        
+        // Rifle shooting loop state to prevent per-shot resets
+        this._rifleShootingLoopActive = false
         this._pistolWalkingHoldUntilMs = 0
         this._pistolWalkingHoldMs = 250 // ms to hold pistol_walking to avoid flicker
+        // Suppress rotation (quaternion slerp) for a short period after shooting
+        this._suppressRotationUntilMs = 0
 
         this._shootRaycaster = new THREE.Raycaster()
         this._shootDebug = { line: null, maxDistance: 60 }
@@ -183,8 +188,15 @@ export default class Player {
             return
         }
 
-        // Hide all weapon meshes
-        Object.values(this.weaponMeshes).forEach(m => { if (m) m.visible = false })
+        // Hide all weapon meshes (recursively) to ensure nested parts are hidden
+        const setVisibilityRecursive = (obj, v) => {
+            if (!obj) return
+            try { obj.visible = v } catch (e) {}
+            if (obj.children && obj.children.length) {
+                for (const c of obj.children) setVisibilityRecursive(c, v)
+            }
+        }
+        Object.values(this.weaponMeshes).forEach(m => { if (m) setVisibilityRecursive(m, false) })
 
         // Update UI Classes
         const slots = document.querySelectorAll('.hud-weapon-slot')
@@ -195,7 +207,36 @@ export default class Player {
             this._weaponWasReloading = Boolean(this.currentWeapon?.isReloading)
 
             if (this.weaponMeshes[weaponKey]) {
-                this.weaponMeshes[weaponKey].visible = true
+                setVisibilityRecursive(this.weaponMeshes[weaponKey], true)
+                // Debug: log the equipped weapon node and its ancestor visibility chain
+                try {
+                    const node = this.weaponMeshes[weaponKey]
+                    const chain = []
+                    let cur = node
+                    while (cur) {
+                        chain.push({ name: cur.name || (cur.type || 'object'), visible: !!cur.visible })
+                        cur = cur.parent
+                    }
+                    console.log('DEBUG: equipped weapon node ->', weaponKey, node, 'ancestors:', chain)
+                    // Ensure all descendant meshes are visible and not frustum culled.
+                    const foundMeshes = []
+                    node.traverse((c) => {
+                        if (c instanceof THREE.Mesh) {
+                            try {
+                                c.visible = true
+                                c.frustumCulled = false
+                                if (c.material) {
+                                    // Force opaque and visible to avoid alpha hiding
+                                    if (typeof c.material.opacity === 'number') c.material.opacity = 1
+                                    if (c.material.transparent) c.material.transparent = false
+                                    c.material.needsUpdate = true
+                                }
+                                foundMeshes.push(c.name || c.type)
+                            } catch (e) {}
+                        }
+                    })
+                    if (foundMeshes.length) console.log('DEBUG: forced-visible descendant meshes ->', foundMeshes)
+                } catch (e) {}
             }
 
             if (this.experience.camera && this.experience.camera.setWeaponActive) {
@@ -279,20 +320,20 @@ export default class Player {
         const barrelPos = new THREE.Vector3()
 
         if (weaponMesh) {
-            // Use the model's barrel position directly (check for barrel bone/helper first)
-            let barrelHelper = null
-            weaponMesh.traverse((child) => {
-                const name = child.name.toLowerCase()
-                if (name.includes('barrel') || name.includes('muzzle')) {
-                    barrelHelper = child
-                }
-            })
-
-            if (barrelHelper) {
-                barrelHelper.getWorldPosition(barrelPos)
+            // If rifle is active, prefer an explicit rifle barrel helper if present
+            const isRifleActive = this.currentWeapon === this.weapons.rifle
+            if (isRifleActive && this.rifleBarrelHelper) {
+                this.rifleBarrelHelper.getWorldPosition(barrelPos)
             } else {
-                // Fallback to weapon mesh position if no barrel helper found
-                weaponMesh.getWorldPosition(barrelPos)
+                // Use the model's barrel position directly (check for barrel bone/helper first)
+                let barrelHelper = null
+                weaponMesh.traverse((child) => {
+                    const name = (child.name || '').toLowerCase()
+                    if (name.includes('barrel') || name.includes('muzzle')) barrelHelper = child
+                })
+
+                if (barrelHelper) barrelHelper.getWorldPosition(barrelPos)
+                else weaponMesh.getWorldPosition(barrelPos)
             }
         } else {
             this.experience.camera.instance.getWorldPosition(barrelPos)
@@ -326,6 +367,7 @@ export default class Player {
                 this._pistolWalkingHoldUntilMs = nowMs + this._pistolWalkingHoldMs
             } else if (this.currentWeapon === this.weapons.rifle) {
                 this._playSfx('pistol_shot', { playbackRate: 1.2, volume: 0.8 })
+                console.log('DEBUG: rifle shoot called', { ammo: this.currentWeapon.ammo, nextFire: this.currentWeapon.nextFireTimeMs, now: nowMs })
             } else if (this.currentWeapon === this.weapons.shotgun) {
                 this._playSfx('pistol_shot', { playbackRate: 0.7, volume: 1.2 })
             }
@@ -336,9 +378,14 @@ export default class Player {
             }
 
             // Immediately update base animation to switch from walking to walking_legs if shooting while moving
+            // For full-body rifle animations we must NOT call the pistol-overlay base updater here
             const isMoving = this.input.keys.forward || this.input.keys.backward || this.input.keys.left || this.input.keys.right
             const isRunning = isMoving && this.input.keys.shift
-            this.updateBaseAnimation(isMoving, isRunning, true)  // gun overlay active
+            if (this.currentWeapon !== this.weapons.rifle) {
+                this.updateBaseAnimation(isMoving, isRunning, true)  // gun overlay active (pistol/shotgun)
+            }
+            // Prevent movement-key-driven model rotation for 1 second after shooting
+            this._suppressRotationUntilMs = nowMs + 1000
         }
         return fired
     }
@@ -625,14 +672,36 @@ export default class Player {
         console.log('Main Character Animations:', this.animations)
 
         this.mesh.traverse((child) => {
-            const name = child.name.toLowerCase()
-            if (name.includes('pistol') || name.includes('gun')) {
+            const name = (child.name || '').toLowerCase()
+            if (name.includes('pistol')) {
                 this.weaponMeshes.pistol = child
                 child.visible = false
             }
-            if (name.includes('rifle') || name.includes('ak47') || name.includes('m4')) {
-                this.weaponMeshes.rifle = child
-                child.visible = false
+            // Prefer explicit rifle root nodes and skip helper/barrel points
+            if (name.includes('rifle')) {
+                const isHelper = name.includes('barrel') || name.includes('muzzle') || name.includes('point') || name.includes('helper')
+                if (isHelper) {
+                    // treat as barrel/helper candidate
+                    child.userData = child.userData || {}
+                    if (child.userData && child.userData.is_rifle_barrel_point) this.rifleBarrelHelper = child
+                } else {
+                    // assign rifle root node
+                    this.weaponMeshes.rifle = child
+                    child.visible = false
+                    // Mark rifle mesh
+                    child.userData = child.userData || {}
+                    child.userData.is_rifle = true
+
+                    // find an explicit barrel helper inside the rifle root
+                    let barrelHelper = null
+                    child.traverse((c) => {
+                        const cn = (c.name || '').toLowerCase()
+                        if (c.userData && c.userData.is_rifle_barrel_point) barrelHelper = c
+                        if (!barrelHelper && cn.includes('is_rifle_barrel_point')) barrelHelper = c
+                        if (!barrelHelper && (cn.includes('rifle_barrel') || cn.includes('barrel') || cn.includes('muzzle'))) barrelHelper = c
+                    })
+                    if (barrelHelper) this.rifleBarrelHelper = barrelHelper
+                }
             }
             if (name.includes('shotgun')) {
                 this.weaponMeshes.shotgun = child
@@ -651,7 +720,15 @@ export default class Player {
         })
 
         this.mesh.visible = true
-        this._createPlaceholderWeaponMeshes()
+        // Debug: report whether weapon meshes and rifle barrel helper were found
+        try {
+            console.log('DEBUG: weapon meshes found ->', {
+                pistol: !!this.weaponMeshes.pistol,
+                rifle: !!this.weaponMeshes.rifle,
+                shotgun: !!this.weaponMeshes.shotgun,
+                rifleBarrelHelper: !!this.rifleBarrelHelper
+            })
+        } catch (e) {}
 
         this.mesh.castShadow = true
         this.mesh.receiveShadow = true
@@ -665,53 +742,7 @@ export default class Player {
     }
 
     _createPlaceholderWeaponMeshes() {
-        let handBone = null
-        this.mesh.traverse(c => {
-            if (c.isBone) {
-                const n = c.name.toLowerCase()
-                if ((n.includes('hand') && n.includes('r')) || n.includes('righthand') || n.includes('hand_r')) {
-                    handBone = c
-                }
-            }
-        })
-
-        if (!handBone) return
-
-        if (!this.weaponMeshes.rifle) {
-            const geom = new THREE.BoxGeometry(0.1, 0.15, 0.8)
-            const mat = new THREE.MeshStandardMaterial({ color: 0x444444 })
-            const mesh = new THREE.Mesh(geom, mat)
-            mesh.position.set(0, -0.05, 0.2)
-            mesh.rotation.x = Math.PI / 2
-            mesh.name = "Rifle_Placeholder"
-            handBone.add(mesh)
-            this.weaponMeshes.rifle = mesh
-            mesh.visible = false
-        }
-
-        if (!this.weaponMeshes.shotgun) {
-            const geom = new THREE.BoxGeometry(0.12, 0.12, 0.6)
-            const mat = new THREE.MeshStandardMaterial({ color: 0x880000 })
-            const mesh = new THREE.Mesh(geom, mat)
-            mesh.position.set(0, -0.05, 0.2)
-            mesh.rotation.x = Math.PI / 2
-            mesh.name = "Shotgun_Placeholder"
-            handBone.add(mesh)
-            this.weaponMeshes.shotgun = mesh
-            mesh.visible = false
-        }
-
-        if (!this.weaponMeshes.pistol) {
-            const geom = new THREE.BoxGeometry(0.05, 0.1, 0.3)
-            const mat = new THREE.MeshStandardMaterial({ color: 0x222222 })
-            const mesh = new THREE.Mesh(geom, mat)
-            mesh.position.set(0, -0.05, 0.1)
-            mesh.rotation.x = Math.PI / 2
-            mesh.name = "Pistol_Placeholder"
-            handBone.add(mesh)
-            this.weaponMeshes.pistol = mesh
-            mesh.visible = false
-        }
+        return
     }
 
     setupAnimations() {
@@ -723,13 +754,16 @@ export default class Player {
                 this._oneShotGunAimActive = false
                 this._gunAimHoldUntilMs = (this.time?.elapsed ?? 0) + this._gunAimOneShotHoldMs
             }
+            if (clipName.includes('rifle_shoot')) {
+                console.log('DEBUG: mixer finished rifle_shoot clip', { clipName })
+            }
         })
 
         if (this.animations && this.animations.length > 0) {
             this.animations.forEach(clip => {
                 const key = clip.name.toLowerCase()
                 const action = this.mixer.clipAction(clip)
-                if (key === 'pistol_aim') {
+                if (key === 'pistol_aim' || key.includes('rifle_shoot')) {
                     action.loop = THREE.LoopOnce
                     action.clampWhenFinished = true
                 } else {
@@ -787,13 +821,22 @@ export default class Player {
 
         if (this.baseAction) {
             this.baseAction.enabled = true
-            // Suppress full-body walking while pistol_aim is active (unless the
-            // base clip is the dedicated `pistol_walking` clip).
-            if (gunAimActive && baseClipName.includes('walk') && !baseClipName.includes('legs') && !baseClipName.includes('pistol_walking')) {
+            // If a gun overlay (e.g., pistol_aim) is active, aggressively
+            // suppress conflicting full-body base animations to avoid visual overlap.
+            // Allow exceptions for dedicated upper-body base clips like `pistol_walking` or `idle_upper`.
+            const allowWhileOverlay = baseClipName.includes('pistol_walking') || baseClipName.includes('idle_upper') || baseClipName.includes('idle')
+            if (gunAimActive && !allowWhileOverlay) {
+                // Force base weight to zero to prevent full-body influence
                 this.baseAction.setEffectiveWeight?.(0)
-                // Also ensure support layer provides legs if available
-                if (this.overlaySupportAction) this.overlaySupportAction.setEffectiveWeight?.(this._overlaySupportWeight)
-                console.log('Animation: suppressed full-body walking while pistol_aim active ->', baseClipName)
+                // Promote support layer (legs) to handle movement if available
+                if (this.overlaySupportAction) {
+                    this.overlaySupportAction.enabled = true
+                    this.overlaySupportAction.setEffectiveWeight?.(1)
+                } else if (allowWhileOverlay === false && this.actions['pistol_walking']) {
+                    // If no support layer, ensure pistol_walking is used as base for legs
+                    this.playBaseAnimation('pistol_walking')
+                    this.baseAction.setEffectiveWeight?.(0)
+                }
             } else {
                 this.baseAction.setEffectiveWeight?.(this._baseWeight)
             }
@@ -814,50 +857,27 @@ export default class Player {
         const newAction = resolvedKey ? this.actions[resolvedKey] : null
         if (!newAction || newAction === this.baseAction) return
         if (this.baseAction) this.baseAction.fadeOut(0.2)
-        // Do not use Three.js fadeIn here; weight blending is handled manually
-        // in _updateAnimationLayerWeights via _baseWeight/_baseWeightTarget.
+        console.log('DEBUG: playBaseAnimation ->', { requested: animationName, resolvedKey, currentBase: this.baseAction?.getClip?.()?.name })
         newAction.enabled = true
         newAction.reset()
+        try {
+            const keyLower = (resolvedKey || '').toLowerCase()
+            if (keyLower.includes('pistol_aim') || keyLower.includes('rifle_shoot')) {
+                if (typeof newAction.setLoop === 'function') newAction.setLoop(THREE.LoopRepeat, Infinity)
+                else newAction.loop = THREE.LoopRepeat
+                newAction.clampWhenFinished = false
+            }
+        } catch (e) {}
         newAction.play()
         this.baseAction = newAction
     }
 
     playOverlayAnimation(animationName, { timeScale = 1 } = {}) {
-        const resolvedKey = this._resolveActionKey(animationName)
-        const newAction = resolvedKey ? this.actions[resolvedKey] : null
-        if (!newAction) return
-        // If the requested overlay is already active and still playing (for
-        // LoopOnce one-shot clips like `pistol_aim`), don't reset it on rapid
-        // repeated clicks — allow it to finish. If it's finished, allow replay.
-        if (this.overlayAction === newAction) {
-            const actionTime = this.overlayAction.time || 0
-            const clipDur = this.overlayAction.getClip?.()?.duration || 0
-            const isOneShot = this.overlayAction.loop === THREE.LoopOnce
-            if (!isOneShot || actionTime >= clipDur - 0.001) {
-                // replay allowed: fall through to reset/play
-            } else {
-                // still playing — ignore repeated request
-                return
-            }
-        }
-
-        if (this.overlayAction && this.overlayAction !== newAction) this.overlayAction.fadeOut(0.15)
-        newAction.setEffectiveWeight(1)
-        newAction.timeScale = timeScale
-        newAction.reset().fadeIn(0.2).play()
-        this.overlayAction = newAction
-        this._overlayWeightTarget = 1
+        return
     }
 
     playOverlaySupportAnimation(animationName) {
-        const resolvedKey = this._resolveActionKey(animationName)
-        const newAction = resolvedKey ? this.actions[resolvedKey] : null
-        if (!newAction || this.overlaySupportAction === newAction) return
-        if (this.overlaySupportAction) this.overlaySupportAction.fadeOut(0.2)
-        newAction.setEffectiveWeight(1)
-        newAction.reset().fadeIn(0.25).play()
-        this.overlaySupportAction = newAction
-        this._overlaySupportWeightTarget = 1
+        return
     }
 
     stopOverlayAnimation() {
@@ -909,6 +929,46 @@ export default class Player {
         this.physicsWorld.addBody(this.body)
     }
 
+    _startRifleShootingLoop() {
+        const resolvedKey = this._resolveActionKey('rifle_shooting')
+        const shootAction = resolvedKey ? this.actions[resolvedKey] : null
+        if (!shootAction) {
+            console.log('DEBUG: _startRifleShootingLoop -> no action found for rifle_shooting')
+            return
+        }
+        try {
+            if (this.baseAction && this.baseAction !== shootAction) {
+                try { this.baseAction.fadeOut(0.1) } catch (e) {}
+            }
+            shootAction.enabled = true
+            shootAction.reset()
+            if (typeof shootAction.setLoop === 'function') shootAction.setLoop(THREE.LoopRepeat, Infinity)
+            else shootAction.loop = THREE.LoopRepeat
+            shootAction.clampWhenFinished = false
+            shootAction.play()
+            this.baseAction = shootAction
+            this._rifleShootingLoopActive = true
+            console.log('DEBUG: _startRifleShootingLoop -> started', { action: resolvedKey })
+        } catch (e) { console.warn('DEBUG: _startRifleShootingLoop error', e) }
+    }
+
+    _stopRifleShootingLoop() {
+        const resolvedKey = this._resolveActionKey('rifle_shooting')
+        const shootAction = resolvedKey ? this.actions[resolvedKey] : null
+        if (!shootAction) {
+            console.log('DEBUG: _stopRifleShootingLoop -> no action found for rifle_shooting')
+            return
+        }
+        try {
+            if (typeof shootAction.setLoop === 'function') shootAction.setLoop(THREE.LoopOnce, 1)
+            else shootAction.loop = THREE.LoopOnce
+            shootAction.clampWhenFinished = true
+            try { shootAction.stop() } catch (e) {}
+            this._rifleShootingLoopActive = false
+            console.log('DEBUG: _stopRifleShootingLoop -> stopped', { action: resolvedKey })
+        } catch (e) { console.warn('DEBUG: _stopRifleShootingLoop error', e) }
+    }
+
     jump() {
         if (this.canJump) {
             if (this.body.velocity.y < 8) this.body.velocity.y = 8
@@ -919,6 +979,8 @@ export default class Player {
     update() {
         if (!this.input || !this.mesh) return
         const nowMs = this.time?.elapsed ?? 0
+
+        const suppressRotation = nowMs < (this._suppressRotationUntilMs || 0)
 
         // --- WEAPON UPDATE ---
         if (this.currentWeapon) {
@@ -937,8 +999,9 @@ export default class Player {
             const isShooting = !!this.input.keys.shoot
             const shootStarted = isShooting && !this._wasShooting
             this._isShootingHeld = isShooting
+            const isRifleActive = this.currentWeapon === this.weapons.rifle
 
-            if (isShooting && !this.isAiming) {
+            if (!isRifleActive && isShooting && !this.isAiming) {
                 // Only play the pistol overlay if the weapon can fire now or
                 // there's a buffered shot queued. This prevents rapid clicking
                 // from repeatedly resetting the one-shot overlay.
@@ -950,7 +1013,7 @@ export default class Player {
                     }
                 }
             }
-            if (shootStarted && !this.isAiming) {
+            if (!isRifleActive && shootStarted && !this.isAiming) {
                 const willFireOrBuffered = this.currentWeapon?.canFire?.(nowMs) || this.currentWeapon?.bufferedShot
                 if (willFireOrBuffered) {
                     this._oneShotGunAimActive = true
@@ -1038,6 +1101,19 @@ export default class Player {
         const isGunOverlayActive = this.isAiming || this._isShootingHeld || this._oneShotGunAimActive || isHoldingGunAimPose
         const shouldSupportOverlay = isGunOverlayActive || (this.overlayAction && this._overlayWeight > 0.01)
 
+        // Determine if rifle is active — rifle uses full-body animations instead of overlays
+        const isRifleActive = this.currentWeapon === this.weapons.rifle
+
+        // If the pistol is active and the player is shooting while stationary (not aiming),
+        // prefer the full-body `pistol_aim` clip as the base animation instead of overlays.
+        // Include the one-shot aim flag and the hold-timer so a quick click still
+        // keeps the pose for the configured buffer (1s) even if the input is momentary.
+        const usedPistolAimFullBody = (
+            this.currentWeapon === this.weapons.pistol &&
+            (this._isShootingHeld || this._oneShotGunAimActive || (nowMs < (this._gunAimHoldUntilMs || 0))) &&
+            !isMoving && !this.isAiming
+        )
+
         if (this.isAiming || (this.currentWeapon && this._isShootingHeld)) {
             const camera = this.experience.camera.instance
             const dir = new THREE.Vector3()
@@ -1064,7 +1140,7 @@ export default class Player {
             const inputAngle = Math.atan2(inputX, inputZ)
             const targetRot = camAngle + inputAngle
             const targetQ = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), targetRot)
-            this.mesh.quaternion.slerp(targetQ, 0.2)
+            if (!suppressRotation) this.mesh.quaternion.slerp(targetQ, 0.2)
 
             const speed = isRunning ? 10 : 3
             this.body.velocity.x = Math.sin(targetRot) * speed
@@ -1081,8 +1157,35 @@ export default class Player {
         } else if (shouldSupportOverlay && !isGunOverlayActive) this.playOverlaySupportAnimation('idle_upper')
         else this.stopOverlaySupportAnimation()
 
-        this.updateBaseAnimation(isMoving, isRunning, isGunOverlayActive)
-        this._updateAnimationLayerWeights(isGunOverlayActive, isMoving, shouldSupportOverlay)
+        // If rifle is active, pick rifle full-body animations (no overlays)
+        if (isRifleActive) {
+            this.stopOverlayAnimation()
+            this.stopOverlaySupportAnimation()
+            if (isMoving && this._isShootingHeld) {
+                this.playBaseAnimation('rifle_walkshoot')
+            } else if (this._isShootingHeld) {
+                // Stationary firing -> use rifle_shooting as base (looped by playBaseAnimation)
+                this.playBaseAnimation('rifle_shooting')
+            } else if (isRunning) {
+                this.playBaseAnimation('rifle_run')
+            } else if (isMoving) {
+                this.playBaseAnimation('rifle_walking')
+            } else {
+                const idleKey = this._resolveActionKey('rifle_idle')
+                if (idleKey) this.playBaseAnimation(idleKey)
+            }
+            this._updateAnimationLayerWeights(false, isMoving, false)
+        } else {
+            // If we should use the pistol full-body aim for stationary shooting,
+            // set it as the base animation and skip overlay-driven base updates.
+            if (usedPistolAimFullBody) {
+                this.playBaseAnimation('pistol_aim')
+                this._updateAnimationLayerWeights(false, isMoving, false)
+            } else {
+                this.updateBaseAnimation(isMoving, isRunning, isGunOverlayActive)
+                this._updateAnimationLayerWeights(isGunOverlayActive, isMoving, shouldSupportOverlay)
+            }
+        }
 
         if (this.mixer) this.mixer.update(dt)
 

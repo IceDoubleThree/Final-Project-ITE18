@@ -182,6 +182,76 @@ export default class Enemy {
                     this.actions[key] = action
                 })
                 const walkKey = Object.keys(this.actions).find(k => k.includes('walk') || k.includes('walking'))
+                if (walkKey) {
+                    const a = this.actions[walkKey]
+                    a.enabled = true
+                    if (typeof a.reset === 'function') a.reset()
+                    a.setEffectiveWeight?.(1)
+                    a.play()
+                }
+            }
+
+            return
+        }
+
+        // If walker model is available, use it for walker enemies (clone safely)
+        const walkerGltf = !isRunner ? resources?.items?.walkerModel : null
+        if (!isRunner && walkerGltf) {
+            const modelScene = SkeletonUtils.clone(walkerGltf.scene)
+            modelScene.name = this.name
+            modelScene.position.copy(position)
+            modelScene.position.y += 0.1
+            // Slightly larger than runner placeholder, tuned visually
+            modelScene.scale.set(0.8, 0.8, 0.8)
+
+            modelScene.updateMatrixWorld(true)
+            const bbox = new THREE.Box3().setFromObject(modelScene)
+            const modelMinY = bbox.min.y
+            const bodyPosY = position.y + 1.0
+            const feetY = bodyPosY - this._bodyHalfHeight
+            const deltaY = feetY - modelMinY
+            modelScene.position.y += deltaY
+            this._meshBodyYOffset = modelScene.position.y - bodyPosY
+
+            modelScene.userData = modelScene.userData || {}
+            modelScene.userData.type = 'enemy'
+            modelScene.userData.enemyType = this.type
+            modelScene.userData.enemy = this
+            modelScene.userData.hp = this.hp
+            modelScene.userData.maxHp = this.maxHp
+            modelScene.userData.baseDamage = this.baseDamage
+
+            modelScene.traverse((child) => {
+                if (child instanceof THREE.Mesh) {
+                    // Walkers can cast shadows but keep materials cheap
+                    child.castShadow = true
+                    child.receiveShadow = true
+
+                    const mat = child.material
+                    if (mat) {
+                        if (typeof mat.metalness !== 'undefined') mat.metalness = 0
+                        if (typeof mat.roughness !== 'undefined') mat.roughness = 1
+                        if (mat.envMap) mat.envMap = null
+                        mat.side = THREE.DoubleSide
+                        mat.needsUpdate = true
+                    }
+                }
+            })
+
+            this.scene.add(modelScene)
+            this.mesh = modelScene
+
+            // Setup animations for walker
+            this.animations = walkerGltf.animations || []
+            if (this.animations.length > 0) {
+                this.mixer = new THREE.AnimationMixer(this.mesh)
+                this.animations.forEach((clip) => {
+                    const key = clip.name.toLowerCase()
+                    const action = this.mixer.clipAction(clip)
+                    action.loop = THREE.LoopRepeat
+                    this.actions[key] = action
+                })
+                const walkKey = Object.keys(this.actions).find(k => k.includes('walk') || k.includes('walking'))
                 if (walkKey) this.actions[walkKey].play()
             }
 
