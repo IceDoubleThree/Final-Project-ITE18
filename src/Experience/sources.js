@@ -135,5 +135,10 @@
                 '/textures/sky/Daylight%20Box_Front.png',
                 '/textures/sky/Daylight%20Box_Back.png',
             ]
+        },
+        {
+            name: 'runnerModel',
+            type: 'gltfModel',
+            path: '/models/runner.glb'
         }
     ]

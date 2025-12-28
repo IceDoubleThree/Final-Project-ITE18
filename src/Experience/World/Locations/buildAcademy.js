@@ -319,10 +319,18 @@ export default function buildAcademy(state) {
       console.warn('Failed to create instanced bushes:', e);
     }
 
+    // Limit shadow casters to reduce GPU cost: avoid making every mesh a shadow caster.
     model.traverse((child) => {
       if (child.isMesh) {
-        child.castShadow = true;
+        // Receive shadows for contact realism but avoid heavy shadow casting from many small meshes
         child.receiveShadow = true;
+        // Only enable castShadow for large/important meshes (heuristic: name includes 'ground'|'road'|'building')
+        const n = (child.name || '').toLowerCase();
+        if (n.includes('ground') || n.includes('road') || n.includes('building') || n.includes('wall')) {
+          child.castShadow = true;
+        } else {
+          child.castShadow = false;
+        }
       }
     });
 

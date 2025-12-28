@@ -4,6 +4,7 @@ import Experience from "../Experience.js";
 import Environment from "./Environment.js";
 import PhysicsMaterials from "./PhysicsMaterials.js";
 import Player from "./player.js";
+import Enemy, { EnemyTypes } from "./Enemy.js";
 import NPC from "./NPC.js";
 import Portal from "./Portal.js";
 
@@ -332,6 +333,17 @@ export default class World {
           this.physicsDebug.group.visible = !!v;
         });
       }
+      // Debug spawn controls: spawn at player location
+      try {
+        const spawnControls = {
+          spawnWalker: () => this.spawnEnemyAtPlayer(EnemyTypes.WALKER),
+          spawnRunner: () => this.spawnEnemyAtPlayer(EnemyTypes.RUNNER),
+        };
+        this.debugFolder.add(spawnControls, 'spawnWalker').name('spawn walker at player');
+        this.debugFolder.add(spawnControls, 'spawnRunner').name('spawn runner at player');
+      } catch (e) {
+        // ignore if GUI not available
+      }
     }
   }
 
@@ -554,6 +566,35 @@ export default class World {
     this.scene.background = null;
     this.scene.fog = null;
     this.currentLocation = null;
+  }
+
+  // Spawn an enemy at a given world position and register it with the current location
+  spawnEnemyAt(position, type = EnemyTypes.WALKER) {
+    if (!position) return null;
+    if (!this.currentLocation) {
+      console.warn('[World] spawnEnemyAt: no currentLocation to attach enemy to')
+      return null;
+    }
+
+    const pos = position instanceof THREE.Vector3 ? position.clone() : new THREE.Vector3(position.x ?? 0, position.y ?? 0, position.z ?? 0)
+
+    let enemy = null
+    const t = (type || EnemyTypes.WALKER).toLowerCase()
+    if (t === EnemyTypes.RUNNER) enemy = Enemy.createRunner(this, pos)
+    else enemy = Enemy.createWalker(this, pos)
+
+    if (enemy) this.currentLocation.enemies.push(enemy)
+    return enemy
+  }
+
+  // Convenience: spawn an enemy at the player's current position (if available)
+  spawnEnemyAtPlayer(type = EnemyTypes.WALKER) {
+    if (!this.player || !this.player.mesh) {
+      console.warn('[World] spawnEnemyAtPlayer: player mesh not available')
+      return null
+    }
+    const pos = this.player.mesh.position.clone()
+    return this.spawnEnemyAt(pos, type)
   }
 
   // --- BUILDERS ---

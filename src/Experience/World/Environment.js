@@ -37,19 +37,20 @@ export default class Environment {
 
         // Enhanced shadow settings for anime style
         this.sunLight.castShadow = true
-        // Higher resolution to keep shadows clean even with a larger shadow camera
-        this.sunLight.shadow.mapSize.set(4096, 4096)
+        // Reduced shadow settings for better performance on lower-end GPUs
+        // Reasonable quality while lowering VRAM and fill-rate costs.
+        this.sunLight.shadow.mapSize.set(2048, 2048)
         // Expanded range so shadows don't get cut off in larger locations
         this.sunLight.shadow.camera.near = 0.1
         this.sunLight.shadow.camera.far = 250
-        // Make the shadow camera much larger to avoid a visible shadow edge on the ground
-        this.sunLight.shadow.camera.left = -120
-        this.sunLight.shadow.camera.top = 120
-        this.sunLight.shadow.camera.right = 120
-        this.sunLight.shadow.camera.bottom = -120
+        // Make the shadow camera smaller to reduce shadow-frustum rendering cost
+        this.sunLight.shadow.camera.left = -60
+        this.sunLight.shadow.camera.top = 60
+        this.sunLight.shadow.camera.right = 60
+        this.sunLight.shadow.camera.bottom = -60
         this.sunLight.shadow.bias = -0.0001 // Reduce shadow acne
         this.sunLight.shadow.normalBias = 0.02 // Additional bias for smooth shadows
-        this.sunLight.shadow.radius = 8 // Softer shadow edges
+        this.sunLight.shadow.radius = 4 // Softer shadow edges (lower cost than 8)
 
         this.sunLight.shadow.camera.updateProjectionMatrix()
 
@@ -79,6 +80,11 @@ export default class Environment {
             this.debugFolder.add(this.sunLight.position, 'x').min(-10).max(10).step(0.001).name('sunX')
             this.debugFolder.add(this.sunLight.position, 'y').min(-10).max(10).step(0.001).name('sunY')
             this.debugFolder.add(this.sunLight.position, 'z').min(-10).max(10).step(0.001).name('sunZ')
+            // Toggle shadows at runtime for quick profiling
+            const sunShadowState = { shadows: !!this.sunLight.castShadow }
+            this.debugFolder.add(sunShadowState, 'shadows').name('sunCastShadows').onChange((v) => {
+                this.sunLight.castShadow = !!v
+            })
         }
     }
 

@@ -1,4 +1,5 @@
 import * as THREE from 'three'
+import * as SkeletonUtils from 'three/examples/jsm/utils/SkeletonUtils.js'
 import * as CANNON from 'cannon-es'
 
 export const EnemyTypes = Object.freeze({
@@ -66,6 +67,9 @@ export default class Enemy {
         this.mesh = null
         this.body = null
         this.dead = false
+        this.mixer = null
+        this.actions = {}
+        this.animations = []
 
         // Step assist: helps enemies climb short ledges/steps.
         this.stepAssist = {
@@ -113,6 +117,76 @@ export default class Enemy {
         if (!this.scene) return
 
         const isRunner = this.type === EnemyTypes.RUNNER
+        // If runner model is available in resources, use it (cloned), otherwise fallback to capsule placeholder
+        const resources = this.experience?.resources
+        const runnerGltf = isRunner ? resources?.items?.runnerModel : null
+
+        if (isRunner && runnerGltf) {
+            const modelScene = SkeletonUtils.clone(runnerGltf.scene)
+            modelScene.name = this.name
+            modelScene.position.copy(position)
+            modelScene.position.y += 0.1
+            // Scale down runner model for performance and visual tuning
+            modelScene.scale.set(0.5, 0.5, 0.5)
+
+            // Compute bounding box and align model so its feet sit on the physics body's feet
+            modelScene.updateMatrixWorld(true)
+            const bbox = new THREE.Box3().setFromObject(modelScene)
+            const modelMinY = bbox.min.y
+            const bodyPosY = position.y + 1.0
+            const feetY = bodyPosY - this._bodyHalfHeight
+            const deltaY = feetY - modelMinY
+            modelScene.position.y += deltaY
+            // store Y offset between mesh origin and body position for use in update()
+            this._meshBodyYOffset = modelScene.position.y - bodyPosY
+
+            modelScene.userData = modelScene.userData || {}
+            modelScene.userData.type = 'enemy'
+            modelScene.userData.enemyType = this.type
+            modelScene.userData.enemy = this
+            modelScene.userData.hp = this.hp
+            modelScene.userData.maxHp = this.maxHp
+            modelScene.userData.baseDamage = this.baseDamage
+
+            // Ensure clones are safe for animation but avoid expensive glossy/envMap shading and
+            // avoid casting shadows from every skinned mesh (reduces GPU cost).
+            modelScene.traverse((child) => {
+                if (child instanceof THREE.Mesh) {
+                    // Reduce shadow casters for performance (runners don't need to cast heavy shadows)
+                    child.castShadow = false
+                    child.receiveShadow = true
+
+                    const mat = child.material
+                    if (mat) {
+                        // Make materials less glossy and remove environment reflections
+                        if (typeof mat.metalness !== 'undefined') mat.metalness = 0
+                        if (typeof mat.roughness !== 'undefined') mat.roughness = 1
+                        if (mat.envMap) mat.envMap = null
+                        mat.side = THREE.DoubleSide
+                        mat.needsUpdate = true
+                    }
+                }
+            })
+
+            this.scene.add(modelScene)
+            this.mesh = modelScene
+
+            // Setup animations (play walking clip if present)
+            this.animations = runnerGltf.animations || []
+            if (this.animations.length > 0) {
+                this.mixer = new THREE.AnimationMixer(this.mesh)
+                this.animations.forEach((clip) => {
+                    const key = clip.name.toLowerCase()
+                    const action = this.mixer.clipAction(clip)
+                    action.loop = THREE.LoopRepeat
+                    this.actions[key] = action
+                })
+                const walkKey = Object.keys(this.actions).find(k => k.includes('walk') || k.includes('walking'))
+                if (walkKey) this.actions[walkKey].play()
+            }
+
+            return
+        }
 
         const geometry = new THREE.CapsuleGeometry(0.35, 1.0, 4, 8)
         const material = new THREE.MeshStandardMaterial({
@@ -366,8 +440,24 @@ export default class Enemy {
             this.body.velocity.z = 0
         }
 
-        // Sync mesh to physics body
-        this.mesh.position.set(this.body.position.x, this.body.position.y, this.body.position.z)
+        // Sync mesh to physics body (respect stored mesh->body Y offset if available)
+        if (typeof this._meshBodyYOffset === 'number') {
+            this.mesh.position.set(this.body.position.x, this.body.position.y + this._meshBodyYOffset, this.body.position.z)
+        } else {
+            this.mesh.position.set(this.body.position.x, this.body.position.y, this.body.position.z)
+        }
+
+        // Update animations (only when near camera to save CPU/GPU)
+        const dt = (this.time?.delta ?? 16) / 1000
+        if (this.mixer) {
+            const camPos = this.experience?.camera?.instance?.position
+            let doUpdate = true
+            if (camPos && this.mesh && this.mesh.position) {
+                const dist = camPos.distanceTo(this.mesh.position)
+                doUpdate = dist <= 40 // only animate when within 40 units
+            }
+            if (doUpdate) this.mixer.update(dt)
+        }
 
         // --- Combat: contact damage ---
         if (!gameActive) return
