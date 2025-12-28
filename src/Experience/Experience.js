@@ -39,7 +39,7 @@ export default class Experience
         this.resources = new Resources(sources) 
         
         this.input = new Input()
-        this.dialogue = new DialogueReader()
+        this.dialogue = new DialogueReader() // Instantiate DialogueReader
         this.camera = new Camera()
         this.renderer = new Renderer()
 
@@ -60,6 +60,9 @@ export default class Experience
         this._lobbyStarted = false
         this._runStarted = false
         this.isPaused = false
+
+        // --- NEW: Flag to ensure story only plays once per session ---
+        this.hasPlayedIntro = false
 
         // Setup Pause Menu
         this.setupPauseMenu()
@@ -86,6 +89,15 @@ export default class Experience
     enterMainMenu() {
         // Target function sets current_env itself
         this.appState?.setEnv(ENVIRONMENTS.MAIN_MENU)
+        
+        const btnStart = document.getElementById('btn-start-game')
+        
+        // Main Menu button just enters the Lobby (Store/Room) now
+        // Using {once: true} prevents multiple listeners piling up if we return to main menu
+        btnStart?.addEventListener('click', () => {
+            document.getElementById('main-menu').style.display = 'none'
+            this.startGame('Room') 
+        }, { once: true })
     }
 
     enterLobby(locationKey = 'Room', options = {}) {
@@ -240,6 +252,35 @@ export default class Experience
         // Defer the location load until the world exists and is ready
         this._pendingStartLocationKey = locationKey ?? 'Room'
         this._pendingStartGame = true
+
+        // --- NEW: Play Intro Story Dialogue (Once per session) ---
+        if (!this.hasPlayedIntro && this.dialogue) {
+            this.hasPlayedIntro = true
+
+            // Define your story script here
+            const storyScript = [
+                { name: "System", text: "Initializing and Downloading Player Data..." },
+                { name: "System", text: "Data Confirmed." },
+                { name: "Player", text: "Urghh... Where am i?" },
+                { name: "System", text: "You enter the Academy Of Spent Shells Simulation." },
+                { name: "Player", text: "Academy Of What?" },
+                { name: "System", text: "Objective: Survive and complete all tasks to exit simulation." },
+                { name: "System", text: "Failed to complete objective may lead to delation of data." },
+                { name: "Player", text: "Deletion of data? Does it mean death?." },
+                { name: "System", text: "Yes if you prefer that term." },
+                { name: "System", text: "Now you can start with your journey, We'll provide you some starter supply soon as you start the game" },
+                { name: "Player", text: "I have a question...." },
+                { name: "System", text: "Good Luck To Your Mission Player." },
+                { name: "Player", text: "WAIT..." },
+            ]
+
+            console.log("💬 Triggering Intro Story...")
+            
+            // Wait 1.5s for the black screen fade-in to finish so the player can see
+            setTimeout(() => {
+                this.dialogue.play(storyScript)
+            }, 1500)
+        }
     }
 
     startRun(startLevelKey = 'Academy') {
@@ -315,35 +356,13 @@ export default class Experience
 
         // 4. Start game once world and resources are ready
         if (this._pendingStartGame && this.world && this.world.environment) {
-            // Prevent multiple loader calls from repeated ticks
-            if (!this._pendingLoaderShown) {
-                this._pendingLoaderShown = true
-
-                const doLoad = () => {
-                    try {
-                        if (this._pendingStartLocationKey) {
-                            this.world.loadLocation(this._pendingStartLocationKey)
-                        }
-                    } finally {
-                        this._pendingStartLocationKey = null
-                        this._pendingStartGame = false
-                        this._pendingLoaderShown = false
-                    }
-                }
-
-                if (typeof window !== 'undefined' && typeof window.showMiniLoader === 'function') {
-                    // Randomize 2-5s to mirror LevelManager behaviour
-                    const minMs = 2000
-                    const maxMs = 5000
-                    const randMs = Math.floor(Math.random() * (maxMs - minMs + 1)) + minMs
-                    const label = this._pendingStartLocationKey ? `Entering ${this._pendingStartLocationKey}...` : 'Entering...'
-                    // Show the loader but do not wait for it — start loading immediately.
-                    try { window.showMiniLoader(randMs, label).catch(() => {}); } catch (e) { /* ignore */ }
-                    doLoad()
-                } else {
-                    doLoad()
-                }
+            // If a location was chosen from the debug menu, load it now.
+            if (this._pendingStartLocationKey) {
+                this.world.loadLocation(this._pendingStartLocationKey)
             }
+
+            this._pendingStartLocationKey = null
+            this._pendingStartGame = false
         }
     }
 

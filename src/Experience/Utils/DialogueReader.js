@@ -1,5 +1,8 @@
-export default class DialogueReader {
+import EventEmitter from './EventEmitter.js'
+
+export default class DialogueReader extends EventEmitter {
     constructor() {
+        super()
         this.dialogueData = null
         this.currentDialogueId = null
         this.currentMessageIndex = 0
@@ -7,8 +10,12 @@ export default class DialogueReader {
         this.dialogueBox = null
         this.isLoaded = false
         
+        // Queue for raw script arrays (manual play)
+        this.scriptQueue = [] 
+        this.isManualMode = false
+
         this.initializeHTML()
-        this.loadDialogueData()
+        this.loadDialogueData() // Optional: Keep if you plan to use JSON later
         this.setupEventListeners()
     }
 
@@ -25,7 +32,7 @@ export default class DialogueReader {
         // Create main dialogue container
         const container = document.createElement('div')
         container.id = 'dialogue-container'
-        container.className = 'dialogue-container hidden'
+        container.className = 'dialogue-container hidden' // CSS should handle visibility
 
         // Create dialogue box
         const box = document.createElement('div')
@@ -35,15 +42,15 @@ export default class DialogueReader {
         const characterName = document.createElement('div')
         characterName.className = 'dialogue-character'
         characterName.id = 'dialogue-character'
-        characterName.textContent = 'NPC'
+        characterName.textContent = 'System'
 
         // Create text display
         const textDisplay = document.createElement('div')
         textDisplay.className = 'dialogue-text'
         textDisplay.id = 'dialogue-text'
-        textDisplay.textContent = 'Dialogue will appear here...'
+        textDisplay.textContent = '...'
 
-        // Create continue indicator (arrow or text)
+        // Create continue indicator (arrow)
         const continueIndicator = document.createElement('div')
         continueIndicator.className = 'dialogue-continue'
         continueIndicator.id = 'dialogue-continue'
@@ -60,19 +67,22 @@ export default class DialogueReader {
     }
 
     /**
-     * Load dialogue data from JSON file
+     * Load dialogue data from JSON file (Optional, keeps existing functionality)
      */
     async loadDialogueData() {
         try {
             const response = await fetch('/dialogue.json')
             if (!response.ok) {
-                throw new Error(`Failed to load dialogue data: ${response.statusText}`)
+                // It's okay if file doesn't exist, we might be using manual mode only
+                console.warn(`Dialogue JSON not found or error: ${response.statusText}`)
+                this.dialogueData = { dialogues: {} }
+                return
             }
             this.dialogueData = await response.json()
             this.isLoaded = true
             console.log('✅ Dialogue data loaded successfully')
         } catch (error) {
-            console.error('❌ Error loading dialogue data:', error)
+            console.warn('⚠️ Manual mode only (No dialogue.json found)')
             this.dialogueData = { dialogues: {} }
             this.isLoaded = false
         }
@@ -84,7 +94,8 @@ export default class DialogueReader {
     setupEventListeners() {
         // Click to advance dialogue
         document.addEventListener('click', (event) => {
-            if (this.isDialogueActive && !event.target.closest('.dialogue-box')) {
+            if (this.isDialogueActive) {
+                // If clicking anywhere while active, advance
                 this.nextMessage()
             }
         })
@@ -106,13 +117,37 @@ export default class DialogueReader {
     }
 
     /**
-     * Read and display a dialogue sequence by ID
+     * --- NEW METHOD ---
+     * Allows playing a raw array of dialogue objects directly.
+     * Used by Experience.js for the intro story.
+     * @param {Array} script - Array of objects like [{name: "System", text: "Hello"}]
+     */
+    play(script) {
+        if (!script || script.length === 0) return
+
+        console.log("📜 Playing Manual Dialogue Script", script)
+        
+        this.scriptQueue = script
+        this.currentMessageIndex = 0
+        this.isDialogueActive = true
+        this.isManualMode = true // Flag to know we are using array, not JSON ID
+
+        // Show the box
+        this.dialogueBox.classList.remove('hidden')
+        this.dialogueBox.classList.add('visible')
+        this.dialogueBox.style.display = 'flex' // Ensure it's visible in layout
+
+        this.displayMessage()
+    }
+
+    /**
+     * Read and display a dialogue sequence by ID (Legacy JSON mode)
      * @param {string} dialogueId - The ID of the dialogue to display
      */
     read(dialogueId) {
         // Wait for data to load if not yet loaded
         if (!this.isLoaded) {
-            console.warn(`⏳ Waiting for dialogue data to load before displaying "${dialogueId}"`)
+            console.warn(`⏳ Waiting for dialogue data...`)
             const checkInterval = setInterval(() => {
                 if (this.isLoaded) {
                     clearInterval(checkInterval)
@@ -130,21 +165,31 @@ export default class DialogueReader {
         this.currentDialogueId = dialogueId
         this.currentMessageIndex = 0
         this.isDialogueActive = true
+        this.isManualMode = false
 
         // Show the dialogue box
         this.dialogueBox.classList.remove('hidden')
         this.dialogueBox.classList.add('visible')
+        this.dialogueBox.style.display = 'flex'
 
         // Display the first message
         this.displayMessage()
     }
 
     /**
-     * Display the current message in the sequence
+     * Display the current message in the sequence (Handles both modes)
      */
     displayMessage() {
-        const dialogue = this.dialogueData.dialogues[this.currentDialogueId]
-        const message = dialogue.sequence[this.currentMessageIndex]
+        let message = null
+
+        if (this.isManualMode) {
+            // Get from passed array
+            message = this.scriptQueue[this.currentMessageIndex]
+        } else if (this.dialogueData && this.currentDialogueId) {
+            // Get from JSON data
+            const dialogue = this.dialogueData.dialogues[this.currentDialogueId]
+            if(dialogue) message = dialogue.sequence[this.currentMessageIndex]
+        }
 
         if (!message) {
             this.closeDialogue()
@@ -153,7 +198,8 @@ export default class DialogueReader {
 
         // Update character name
         const characterElement = document.getElementById('dialogue-character')
-        characterElement.textContent = message.speaker
+        // Supports 'speaker' (JSON) or 'name' (Manual Array) properties
+        characterElement.textContent = message.name || message.speaker || "System"
 
         // Update text display
         const textElement = document.getElementById('dialogue-text')
@@ -161,7 +207,16 @@ export default class DialogueReader {
 
         // Show continue indicator if not at the end
         const continueElement = document.getElementById('dialogue-continue')
-        if (this.currentMessageIndex < dialogue.sequence.length - 1) {
+        
+        let isLast = true
+        if (this.isManualMode) {
+            isLast = this.currentMessageIndex >= this.scriptQueue.length - 1
+        } else if (this.currentDialogueId) {
+            const dialogue = this.dialogueData.dialogues[this.currentDialogueId]
+            isLast = this.currentMessageIndex >= dialogue.sequence.length - 1
+        }
+
+        if (!isLast) {
             continueElement.classList.add('visible')
         } else {
             continueElement.classList.remove('visible')
@@ -172,9 +227,16 @@ export default class DialogueReader {
      * Move to the next message in the sequence
      */
     nextMessage() {
-        const dialogue = this.dialogueData.dialogues[this.currentDialogueId]
+        let length = 0
+        
+        // Determine total length based on mode
+        if (this.isManualMode) {
+            length = this.scriptQueue.length
+        } else if (this.dialogueData && this.currentDialogueId) {
+            length = this.dialogueData.dialogues[this.currentDialogueId].sequence.length
+        }
 
-        if (this.currentMessageIndex < dialogue.sequence.length - 1) {
+        if (this.currentMessageIndex < length - 1) {
             this.currentMessageIndex++
             this.displayMessage()
         } else {
@@ -189,11 +251,21 @@ export default class DialogueReader {
         this.isDialogueActive = false
         this.dialogueBox.classList.remove('visible')
         this.dialogueBox.classList.add('hidden')
+        
+        // Delay display:none to allow CSS opacity transition
+        setTimeout(() => {
+            if (!this.isDialogueActive) {
+                this.dialogueBox.style.display = 'none'
+            }
+        }, 300)
+
         this.currentDialogueId = null
         this.currentMessageIndex = 0
+        this.scriptQueue = []
 
         // Dispatch custom event for dialogue closed
         window.dispatchEvent(new CustomEvent('dialogueClosed'))
+        this.trigger('end')
     }
 
     /**
