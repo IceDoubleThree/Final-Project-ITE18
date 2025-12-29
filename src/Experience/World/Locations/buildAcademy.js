@@ -498,6 +498,27 @@ export default function buildAcademy(state) {
           state.enemies.length = 0;
         }
         unlockNextLevelWarp();
+        try {
+          const dialogue = this.experience?.dialogue;
+          const seq = [
+            { text: 'Thank You for Playing this Demo. Due to Time Constraints, We were not able to implement more levels :P', duration: 3500 }
+          ];
+          if (dialogue && typeof dialogue.displaySubtitleSequence === 'function') {
+            dialogue.displaySubtitleSequence(seq, 0, { force: true });
+          } else {
+            const subEl = document.getElementById('subtitle');
+            if (subEl) {
+              subEl.textContent = seq[0].text;
+              subEl.classList.add('visible');
+              setTimeout(() => {
+                subEl.textContent = seq[1].text;
+                setTimeout(() => subEl.classList.remove('visible'), seq[1].duration || 3000);
+              }, seq[0].duration || 3000);
+            }
+          }
+        } catch (e) {
+          console.warn('[Academy] completion subtitle failed', e);
+        }
         return;
       }
 

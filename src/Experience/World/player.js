@@ -68,7 +68,7 @@ export default class Player {
         this.weapons = {
             pistol: new Weapon('Pistol', {
                 damageMultiplier: 1,
-                damage: 25,
+                damage: 15,
                 range: 50,
                 cooldown: 0.4,
                 bufferWindowMs: 0,
@@ -80,8 +80,7 @@ export default class Player {
             }),
             rifle: new Weapon('Assault Rifle', {
                 damageMultiplier: 1,
-                damage: 2, // Low damage, high fire rate
-                range: 100,
+                damage: 3, 
                 cooldown: 0.1,
                 ammo_size: 30,
                 reloading_time: 2.5,
@@ -91,10 +90,10 @@ export default class Player {
             }),
             shotgun: new Weapon('Shotgun', {
                 damageMultiplier: 1,
-                damage: 1, // 1 damage per pellet
+                damage: 10,
                 range: 25,
                 cooldown: 0.9,
-                ammo_size: 6,
+                ammo_size: 10,
                 reloading_time: 3,
                 isAutomatic: false,
                 spread: 0.12,

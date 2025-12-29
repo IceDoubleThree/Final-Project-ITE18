@@ -12,7 +12,6 @@ import buildRoomImpl from "./Locations/buildRoom.js";
 import buildStageDesignImpl from "./Locations/buildStageDesign.js";
 import buildBlankStageImpl from "./Locations/buildBlankStage.js";
 import buildStoreImpl from "./Locations/buildStore.js";
-import buildForestImpl from "./Locations/buildForest.js";
 import buildAcademyImpl from "./Locations/buildAcademy.js";
 import buildRoad2AcademyImpl from "./Locations/buildRoad2Academy.js";
 
@@ -398,14 +397,7 @@ export default class World {
         backgroundTextureKey: "daylightSky",
         build: (state) => this.buildStore(state),
       },
-      Forest: {
-        key: "Forest",
-        origin: new THREE.Vector3(0, 0, 0),
-        size: { width: 100, depth: 100 },
-        background: "#1e2f23",
-        fog: { color: "#1e2f23", near: 5, far: 40 },
-        build: (state) => this.buildForest(state),
-      },
+      
     };
   }
 
@@ -602,7 +594,7 @@ export default class World {
   buildStageDesign(state) { return buildStageDesignImpl.call(this, state); }
   buildBlankStage(state) { return buildBlankStageImpl.call(this, state); }
   buildStore(state) { return buildStoreImpl.call(this, state); }
-  buildForest(state) { return buildForestImpl.call(this, state); }
+  
   buildAcademy(state) { return buildAcademyImpl.call(this, state); }
   buildRoad2Academy(state) { return buildRoad2AcademyImpl.call(this, state); }
 

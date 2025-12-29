@@ -31,7 +31,7 @@ export default class LevelManager extends EventEmitter {
             {
                 id: 3,
                 name: "PlaceHolder",
-                locationKey: "Forest",
+                locationKey: "Store",
                 type: 'survival',
                 difficulty: 'medium',
                 timeLimit: 600, // 10 minutes

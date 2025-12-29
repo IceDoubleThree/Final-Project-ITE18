@@ -44,11 +44,7 @@
             type: 'gltfModel',
             path: '/models/room.glb' 
         },
-        {
-            name: 'forestModel',
-            type: 'gltfModel',
-            path: '/models/Forest.glb' 
-        },
+        
         {
             name: 'roadToAcademyModel',
             type: 'gltfModel',
