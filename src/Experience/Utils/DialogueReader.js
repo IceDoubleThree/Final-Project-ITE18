@@ -9,6 +9,7 @@ export default class DialogueReader extends EventEmitter {
         this.isDialogueActive = false
         this.dialogueBox = null
         this.isLoaded = false
+        this._subtitleTimeout = null
         
         // Queue for raw script arrays (manual play)
         this.scriptQueue = [] 
@@ -220,6 +221,100 @@ export default class DialogueReader extends EventEmitter {
             continueElement.classList.add('visible')
         } else {
             continueElement.classList.remove('visible')
+        }
+    }
+
+    /**
+     * Display a transient subtitle centered at the bottom of the screen.
+     * This is separate from the main dialogue box and will not interfere
+     * with existing dialogue behavior.
+     * @param {string} text
+     * @param {number} durationMs - milliseconds to show (0 = persistent)
+     */
+    displaySubtitle(text, durationMs = 3000) {
+        if (!text) {
+            this.clearSubtitle()
+            return
+        }
+
+        let el = document.getElementById('subtitle')
+        if (!el) {
+            // Fallback: create if missing
+            el = document.createElement('div')
+            el.id = 'subtitle'
+            el.className = 'subtitle-overlay'
+            el.style.display = 'none'
+            document.body.appendChild(el)
+        }
+
+        el.textContent = text
+        el.style.display = 'block'
+        el.classList.remove('hidden')
+        el.classList.add('visible')
+
+        if (this._subtitleTimeout) {
+            clearTimeout(this._subtitleTimeout)
+            this._subtitleTimeout = null
+        }
+
+        if (durationMs > 0) {
+            this._subtitleTimeout = setTimeout(() => {
+                this.clearSubtitle()
+            }, durationMs)
+        }
+    }
+
+    /**
+     * Clear/hide the subtitle immediately.
+     */
+    clearSubtitle() {
+        const el = document.getElementById('subtitle')
+        if (!el) return
+        el.classList.remove('visible')
+        el.classList.add('hidden')
+        // allow transition then remove from flow
+        setTimeout(() => {
+            if (el && !el.classList.contains('visible')) {
+                el.style.display = 'none'
+            }
+        }, 220)
+        if (this._subtitleTimeout) {
+            clearTimeout(this._subtitleTimeout)
+            this._subtitleTimeout = null
+        }
+    }
+
+    /**
+     * Display a sequence of subtitles in order. Each entry may be a string
+     * or an object { text, duration, gap } where duration/gap are ms.
+     * The sequence waits for any active dialogue to finish before starting.
+     * @param {Array<string|object>} entries
+     * @param {number} startDelay - ms to wait before starting the sequence
+     */
+    async displaySubtitleSequence(entries = [], startDelay = 0) {
+        if (!Array.isArray(entries) || entries.length === 0) return
+
+        const waitForIdle = () => new Promise((resolve) => {
+            if (!this.isDialogueActive) return resolve()
+            const iv = setInterval(() => {
+                if (!this.isDialogueActive) {
+                    clearInterval(iv)
+                    resolve()
+                }
+            }, 150)
+        })
+
+        await waitForIdle()
+        if (startDelay > 0) await new Promise(r => setTimeout(r, startDelay))
+
+        for (const entry of entries) {
+            const item = typeof entry === 'string' ? { text: entry } : entry || {}
+            const text = item.text || ''
+            const duration = Number.isFinite(item.duration) ? item.duration : 3000
+            const gap = Number.isFinite(item.gap) ? item.gap : 200
+
+            if (text) this.displaySubtitle(text, duration)
+            await new Promise(r => setTimeout(r, duration + gap))
         }
     }
 

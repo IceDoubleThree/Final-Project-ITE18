@@ -12,6 +12,19 @@
     font-display: swap;
 }
 
+/* Header fonts: use the embedded DESIGNER face for titles and headings */
+h1,h2,h3,h4,h5,h6,
+.main-menu-title,
+.main-menu-subtitle,
+.credits-title,
+.dialogue-character,
+.pause-menu-title,
+.loading-title,
+.game-end-board-title,
+.dev-title {
+    font-family: 'DESIGNER', 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+}
+
 html,
 body
 {
@@ -242,14 +255,41 @@ body
 }
 
 .dialogue-box {
-    background: linear-gradient(135deg, rgba(255, 229, 217, 0.95) 0%, rgba(255, 218, 185, 0.95) 100%);
-    border: 3px solid #ffa07a;
-    border-radius: 15px;
-    padding: 25px;
+    background: linear-gradient(180deg, rgba(44,44,44,0.96) 0%, rgba(32,32,32,0.96) 100%);
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 10px;
+    padding: 20px;
     max-width: 600px;
     width: 90%;
-    box-shadow: 0 0 20px rgba(255, 160, 122, 0.3), inset 0 0 10px rgba(255, 160, 122, 0.1);
-    animation: slideUp 0.3s ease;
+    animation: slideUp 0.28s ease;
+    color: #e6e6e6;
+}
+
+/* Subtitle overlay (bottom-center), uses DESIGNER font for styling */
+.subtitle-overlay {
+    position: fixed;
+    bottom: 36px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 2500;
+    display: none;
+    pointer-events: none;
+    font-family: 'DESIGNER', 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    color: #ffffff;
+    padding: 8px 14px;
+    border-radius: 8px;
+    font-size: 18px;
+    font-weight: 700;
+    letter-spacing: 0.6px;
+    text-align: center;
+}
+.subtitle-overlay.visible {
+    display: block;
+    opacity: 1;
+    transition: opacity 0.22s ease;
+}
+.subtitle-overlay.hidden {
+    opacity: 0;
 }
 
 @keyframes slideUp {
@@ -275,7 +315,7 @@ body
 
 .dialogue-text {
     font-size: 16px;
-    color: #5a3a2a;
+    color: #ffffff;
     line-height: 1.6;
     margin-bottom: 15px;
     min-height: 60px;
@@ -931,7 +971,7 @@ body
     margin-left: 12px;
 }
 
-.hud-weapon-icon-placeholder {
+.hud-weapon-icon {
     width: 60%;
     height: 60%;
     background: rgba(255, 255, 255, 0.1);

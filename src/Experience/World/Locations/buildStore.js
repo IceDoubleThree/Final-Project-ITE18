@@ -8,11 +8,124 @@ export default function buildStore(state) {
   const dialogue = this.experience?.dialogue;
 
   const resource = this.resources.items.storeModel;
+  // Track bodies/objects we add so cleanup can remove them specifically
+  const _addedBodies = [];
+  const _addedTrees = [];
   if (resource?.scene) {
     const model = resource.scene;
     model.scale.set(1, 1, 1);
     model.position.copy(state.origin);
+    // Traverse meshes to apply userData-driven behavior:
+    // - userData.is_invisible -> hide mesh
+    // - userData.is_physics -> create a static physics body for the mesh
+    // - userData.is_tree -> spawn a tree model at that mesh's transform
+    model.traverse((child) => {
+      if (child.isMesh) {
+        child.castShadow = true;
+        child.receiveShadow = true;
+
+        // Invisible marker
+        if (child.userData && child.userData.is_invisible) {
+          child.visible = false;
+        }
+
+        // Physics marker: create a static body approximating the mesh
+        if (child.userData && child.userData.is_physics) {
+          try {
+            if (child.geometry) child.geometry.computeBoundingBox();
+            const bbox = child.geometry && child.geometry.boundingBox;
+            if (bbox) {
+              const size = new THREE.Vector3();
+              bbox.getSize(size);
+
+              const halfExtents = new CANNON.Vec3(
+                Math.max(size.x, 0.001) * 0.5,
+                Math.max(size.y, 0.001) * 0.5,
+                Math.max(size.z, 0.001) * 0.5
+              );
+              const boxShape = new CANNON.Box(halfExtents);
+
+              const body = new CANNON.Body({
+                mass: 0,
+                shape: boxShape,
+                material:
+                  (this.materials && this.materials.materials && this.materials.materials.floor) || undefined,
+              });
+
+              child.updateWorldMatrix(true, false);
+              const worldPos = new THREE.Vector3();
+              const worldQuat = new THREE.Quaternion();
+              child.getWorldPosition(worldPos);
+              child.getWorldQuaternion(worldQuat);
+
+              body.position.set(worldPos.x, worldPos.y, worldPos.z);
+              body.quaternion.set(worldQuat.x, worldQuat.y, worldQuat.z, worldQuat.w);
+
+              this.physicsWorld.addBody(body);
+              state.physicsBodies.push(body);
+              _addedBodies.push(body);
+            }
+          } catch (e) {
+            console.warn('Failed to create physics body for mesh', child, e);
+          }
+        }
+
+        // Tree marker: spawn tree model at this mesh location (if available in resources)
+        if (child.userData && child.userData.is_tree) {
+          // Use the explicit `tree4Model` resource name from sources.js
+          const treeRes = this.resources.items && this.resources.items.tree4Model;
+          if (treeRes && treeRes.scene) {
+            const tree = treeRes.scene.clone(true);
+            child.updateWorldMatrix(true, false);
+            const worldPos = new THREE.Vector3();
+            const worldQuat = new THREE.Quaternion();
+            const worldScale = new THREE.Vector3();
+            child.getWorldPosition(worldPos);
+            child.getWorldQuaternion(worldQuat);
+            child.getWorldScale(worldScale);
+
+            tree.position.copy(worldPos);
+            tree.quaternion.copy(worldQuat);
+            tree.scale.multiply(worldScale);
+            tree.traverse((n) => {
+              if (n.isMesh) {
+                n.castShadow = true;
+                n.receiveShadow = true;
+              }
+            });
+            state.group.add(tree);
+            _addedTrees.push(tree);
+          } else {
+            console.warn('Tree resource (tree4.glb) not found in resources.items');
+          }
+        }
+      }
+    });
+
     state.group.add(model);
+  }
+
+  // --- FIRST-TIME SUBTITLE TRIGGER (shorter) ---
+  if (!this._storeVisited) {
+    this._storeVisited = true
+
+    const sequence = [
+      { text: 'Welcome to the store area, this is where you will get upgrades in the future!', duration: 5000 },
+      { text: 'If you are done checking things out. Proceed to the simulation warp :P', duration: 5000 }
+    ]
+
+    // Prefer the new helper if available; otherwise fall back to legacy behavior.
+    if (dialogue?.displaySubtitleSequence) {
+      dialogue.displaySubtitleSequence(sequence, 600)
+    } else {
+      // Fallback: simple show with small delay between lines
+      setTimeout(() => {
+        dialogue?.displaySubtitle?.(sequence[0].text, sequence[0].duration)
+        setTimeout(() => {
+          dialogue?.displaySubtitle?.(sequence[1].text, sequence[1].duration)
+        }, sequence[0].duration + 200)
+      }, 600)
+    }
   }
 
   // --- DEBUG: Spawn a simple enemy target in Store ---
@@ -62,7 +175,7 @@ export default function buildStore(state) {
     const notice = noticeResource.scene.clone();
     notice.position.set(
       state.origin.x + -12,
-      state.origin.y + 2.5,
+      state.origin.y + 0.5,
       state.origin.z + 7.2
     );
     notice.rotation.y = Math.PI * 0.5;
@@ -206,6 +319,22 @@ export default function buildStore(state) {
       if (dummyPromptEl && dummyPromptEl.remove) dummyPromptEl.remove();
       dummyPromptEl = null;
       dummyEnemyMesh = null;
+
+      // Remove trees we spawned
+      _addedTrees.forEach((t) => {
+        if (t && t.parent) t.parent.remove(t);
+      });
+      _addedTrees.length = 0;
+
+      // Remove physics bodies we added and unregister from state.physicsBodies
+      _addedBodies.forEach((b) => {
+        try {
+          this.physicsWorld.removeBody(b);
+        } catch (e) {}
+        const idx = state.physicsBodies.indexOf(b);
+        if (idx !== -1) state.physicsBodies.splice(idx, 1);
+      });
+      _addedBodies.length = 0;
     },
   };
 }

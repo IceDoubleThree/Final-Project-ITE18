@@ -40,7 +40,7 @@ export default function buildRoom(state) {
           interactionRadius: 1,
           options: [
             {
-              label: "Go to Store",
+              label: "Exit Room",
               onSelect: () =>
                 this.loadLocation("Store", {
                   spawnOffset: new THREE.Vector3(15, 0, 15),

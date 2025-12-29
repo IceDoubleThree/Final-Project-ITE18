@@ -10,6 +10,21 @@
             path: '/models/academy.glb'
         },
         {
+            name: 'iconPistol',
+            type: 'texture',
+            path: '/textures/icons/pistol.png'
+        },
+        {
+            name: 'iconRifle',
+            type: 'texture',
+            path: '/textures/icons/rifle.png'
+        },
+        {
+            name: 'iconShotgun',
+            type: 'texture',
+            path: '/textures/icons/shotgun.png'
+        },
+        {
             name: 'storeModel',
             type: 'gltfModel',
             path: '/models/Store1.glb'
