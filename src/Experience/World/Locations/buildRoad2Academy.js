@@ -281,6 +281,32 @@ export default function buildRoad2Academy(state) {
   this.physicsWorld.addBody(floorBody);
   state.physicsBodies.push(floorBody);
 
+  // Schedule Road->Academy background music (loop) after a short delay
+  try {
+    // Clear any previous timer if location reloaded
+    if (state._bgmTimeout) {
+      clearTimeout(state._bgmTimeout)
+      state._bgmTimeout = null
+    }
+    state._bgmTimeout = setTimeout(() => {
+      try {
+        const sh = this.experience?.soundHandler;
+        if (sh && typeof sh.playAudio === 'function') {
+          sh.playAudio({
+            src: '/audio/bgm/library of ruina inspired sketch - AZALI.m4a',
+            loop: true,
+            gap: 0
+          });
+        }
+      } catch (err) {
+        console.warn('[Road2Academy] delayed bgm play failed', err);
+      }
+      state._bgmTimeout = null
+    }, 5000);
+  } catch (e) {
+    console.warn('[Road2Academy] bgm schedule failed', e);
+  }
+
   return {
     update: () => {
       // Check warp zones each frame and trigger level objective when player enters
@@ -555,6 +581,21 @@ export default function buildRoad2Academy(state) {
           clearInterval(state._runnerInterval);
           state._runnerInterval = null;
         }
+      } catch (e) {
+        // ignore
+      }
+      // Clear any scheduled bgm start
+      try {
+        if (state._bgmTimeout) {
+          clearTimeout(state._bgmTimeout);
+          state._bgmTimeout = null;
+        }
+      } catch (e) {
+        // ignore
+      }
+      // Fade out/stop location BGM when leaving the location
+      try {
+        this.experience?.soundHandler?.fadeOut?.(800);
       } catch (e) {
         // ignore
       }

@@ -34,10 +34,83 @@ if (experience) {
 	experience.soundHandler = soundHandler
 }
 
-// Drive menu BGM from current_env
+// --- Environment-driven BGM control ---
+// Lobby BGM is intentionally managed here (not via `sources`) so it
+// only plays when the app env is `lobby` (Room/Store). It uses a
+// standalone Audio element to avoid interfering with the existing
+// SoundHandler-driven menu/game BGM logic.
+let _lobbyAudio = null
+let _lobbyFadeRaf = null
+
+const _cancelLobbyFade = () => {
+	if (_lobbyFadeRaf) {
+		cancelAnimationFrame(_lobbyFadeRaf)
+		_lobbyFadeRaf = null
+	}
+}
+
+const _fadeOutLobby = (ms = 800) => {
+	const audio = _lobbyAudio
+	if (!audio) return
+	const durationMs = Math.max(0, Number(ms) || 0)
+	if (durationMs === 0) {
+		try { audio.pause(); audio.currentTime = 0 } catch {}
+		_lobbyAudio = null
+		return
+	}
+
+	_cancelLobbyFade()
+	const startVolume = typeof audio.volume === 'number' ? Math.max(0, Math.min(1, audio.volume)) : 1
+	const startTime = performance.now()
+
+	const step = (now) => {
+		if (_lobbyAudio !== audio) return
+		const t = Math.min(1, (now - startTime) / durationMs)
+		audio.volume = Math.max(0, Math.min(1, startVolume * (1 - t)))
+		if (t < 1) {
+			_lobbyFadeRaf = requestAnimationFrame(step)
+			return
+		}
+		try { audio.pause(); audio.currentTime = 0 } catch {}
+		_lobbyAudio = null
+		_lobbyFadeRaf = null
+	}
+
+	_lobbyFadeRaf = requestAnimationFrame(step)
+}
+
+const _playLobbyBgm = () => {
+	if (_lobbyAudio) return
+	try {
+		const a = new Audio('/audio/bgm/Street - Arknights.m4a')
+		a.preload = 'auto'
+		a.loop = true
+		try { a.muted = Boolean(soundHandler?.isMuted?.()) } catch {}
+		a.volume = 1
+		_lobbyAudio = a
+		const p = a.play()
+		if (p && typeof p.catch === 'function') p.catch(() => {})
+	} catch (e) {
+		console.warn('[Lobby BGM] play failed', e)
+		_lobbyAudio = null
+	}
+}
+
+// Drive menu/lobby BGM from current_env
 const syncMenuBgmForEnv = (env) => {
-	if (env === 'main_menu') soundHandler.playAudio('main_menu')
-	else soundHandler.fadeOut(800)
+	if (env === 'main_menu') {
+		// Stop lobby-specific audio and play menu BGM
+		_fadeOutLobby(800)
+		soundHandler.playAudio('main_menu')
+	} else if (env === 'lobby') {
+		// Stop any menu BGM, then start lobby music
+		try { soundHandler.fadeOut(800) } catch {}
+		_playLobbyBgm()
+	} else {
+		// Other environments: stop both
+		try { soundHandler.fadeOut(800) } catch {}
+		_fadeOutLobby(800)
+	}
 }
 
 experience?.appState?.on('env', (nextEnv) => {

@@ -2,6 +2,7 @@ const AUDIO_STATES = {
 	main_menu: {
 		src: './audio/bgm/main_menu.opus',
 		loop: true,
+		volume: 0.7,
 		gap: 1 // seconds
 	}
 }
@@ -9,11 +10,11 @@ const AUDIO_STATES = {
 const SFX_STATES = {
 	pistol_shot: {
 		src: './audio/sfx/pistol/pistol-gunshot.mp3',
-		volume: 0.9
+		volume: 0.5
 	},
 	pistol_reload: {
 		src: './audio/sfx/pistol/pistol-cock.mp3',
-		volume: 0.9
+		volume: 0.5
 	}
 }
 

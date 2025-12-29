@@ -437,6 +437,31 @@ export default function buildAcademy(state) {
   this.physicsWorld.addBody(floorBody);
   state.physicsBodies.push(floorBody);
 
+  // Schedule Academy level background music (loop) after a short delay
+  try {
+    if (state._bgmTimeout) {
+      clearTimeout(state._bgmTimeout)
+      state._bgmTimeout = null
+    }
+    state._bgmTimeout = setTimeout(() => {
+      try {
+        const sh = this.experience?.soundHandler;
+        if (sh && typeof sh.playAudio === 'function') {
+          sh.playAudio({
+            src: '/audio/bgm/Qutabire - Aletheia.m4a',
+            loop: true,
+            gap: 0
+          });
+        }
+      } catch (err) {
+        console.warn('[Academy] delayed bgm play failed', err);
+      }
+      state._bgmTimeout = null
+    }, 5000);
+  } catch (e) {
+    console.warn('[Academy] bgm schedule failed', e);
+  }
+
   return {
     update: () => {
       state.portals.forEach((p) => p.update());
@@ -509,5 +534,21 @@ export default function buildAcademy(state) {
         }
       }
     },
+    cleanup: () => {
+      // Clear any scheduled bgm start
+      try {
+        if (state._bgmTimeout) {
+          clearTimeout(state._bgmTimeout);
+          state._bgmTimeout = null;
+        }
+      } catch (e) {
+        // ignore
+      }
+      try {
+        this.experience?.soundHandler?.fadeOut?.(800);
+      } catch (e) {
+        // ignore
+      }
+    }
   };
 }

@@ -139,7 +139,7 @@ export default class Player {
         this._shootRaycaster = new THREE.Raycaster()
         this._shootDebug = { line: null, maxDistance: 60 }
 
-        this.baseHp = 20
+        this.baseHp = 30
         this.baseAttack = 1
         this.baseDefense = 0
         this.hp = this.baseHp
