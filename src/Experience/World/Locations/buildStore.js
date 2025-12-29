@@ -246,6 +246,40 @@ export default function buildStore(state) {
     })
   );
 
+  // --- STORE SIGN INTERACTION ---
+  // Small sign located at relative position (-5, 0, -1) from origin.
+  const signPosition = new THREE.Vector3(
+    state.origin.x - 5,
+    state.origin.y + 0,
+    state.origin.z - 1
+  );
+
+  state.portals.push(
+    new Portal(this, signPosition, null, "Sign", 0xffffff, {
+      size: new THREE.Vector3(1.2, 1.2, 0.2),
+      interactionRadius: 1.5,
+      options: [
+        {
+          label: "Sign",
+          onSelect: () => {
+            // Use DialogueReader (manual play) to show a short message with an empty name
+            const dlg = dialogue || (this.experience && this.experience.dialogue) || this.dialogue;
+            if (dlg && typeof dlg.play === 'function') {
+              dlg.play([
+                { name: '', text: 'Owner is currently out. Please come again later.' },
+              ]);
+            } else if (dlg && typeof dlg.displaySubtitle === 'function') {
+              // Fallback to subtitle if no full dialogue reader is available
+              dlg.displaySubtitle('Owner is currently out. Please come again later.', 4000);
+            } else {
+              console.log('Owner is currently out. Please come again later.');
+            }
+          },
+        },
+      ],
+    })
+  );
+
   const floorBody = new CANNON.Body({
     mass: 0,
     shape: new CANNON.Plane(),

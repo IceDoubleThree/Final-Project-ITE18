@@ -371,6 +371,27 @@ export default function buildRoad2Academy(state) {
       try {
         const lastZ = typeof state._lastPlayerZ === 'number' ? state._lastPlayerZ : playerPos.z;
 
+        // z = 135: spawn 5 walkers at 0,0,150 with scatter
+        if (!state._z135Triggered && playerPos.z >= 135) {
+          state._z135Triggered = true;
+          try {
+            console.log('[Road2Academy] z135 trigger fired, spawning 5 walkers');
+            const center = (state.origin ? state.origin.clone() : new THREE.Vector3(0, 0, 0)).add(new THREE.Vector3(0, 0, 150));
+            for (let i = 0; i < 5; i++) {
+              const pos = center.clone();
+              const ang = Math.random() * Math.PI * 2;
+              const r = Math.random() * 5; // scatter radius up to 5
+              pos.x += Math.cos(ang) * r;
+              pos.z += Math.sin(ang) * r;
+              try {
+                this.experience?.world?.spawnEnemyAt(pos, 'walker');
+              } catch (e) {
+                console.warn('[Road2Academy] spawn walker (z135) failed', e);
+              }
+            }
+          } catch (e) { console.warn('[Road2Academy] z135 spawn failed', e); }
+        }
+
         // z = 160 subtitles
         if (!state._z160Triggered && playerPos.z >= 160) {
           state._z160Triggered = true;
@@ -394,6 +415,27 @@ export default function buildRoad2Academy(state) {
               }
             }
           } catch (e) { console.warn('[Road2Academy] z160 subtitle failed', e); }
+        }
+
+        // z = 180: spawn 8 walkers at 0,0,213 with scatter
+        if (!state._z180Triggered && playerPos.z >= 180) {
+          state._z180Triggered = true;
+          try {
+            console.log('[Road2Academy] z180 trigger fired, spawning 8 walkers');
+            const center = (state.origin ? state.origin.clone() : new THREE.Vector3(0, 0, 0)).add(new THREE.Vector3(0, 0, 213));
+            for (let i = 0; i < 8; i++) {
+              const pos = center.clone();
+              const ang = Math.random() * Math.PI * 2;
+              const r = Math.random() * 6; // scatter radius up to 6
+              pos.x += Math.cos(ang) * r;
+              pos.z += Math.sin(ang) * r;
+              try {
+                this.experience?.world?.spawnEnemyAt(pos, 'walker');
+              } catch (e) {
+                console.warn('[Road2Academy] spawn walker (z180) failed', e);
+              }
+            }
+          } catch (e) { console.warn('[Road2Academy] z180 spawn failed', e); }
         }
 
         // z = 187 subtitles
@@ -488,7 +530,28 @@ export default function buildRoad2Academy(state) {
         console.warn('[Road2Academy] z-crossing checks failed', e);
       }
 
-      // (Intro trigger removed from location file; intro is now managed by GameManager)
+        // z = 271: spawn 10 walkers at 0,0,325 with scatter
+        if (!state._z271Triggered && playerPos.z >= 271) {
+          state._z271Triggered = true;
+          try {
+            console.log('[Road2Academy] z271 trigger fired, spawning 10 walkers');
+            const center = (state.origin ? state.origin.clone() : new THREE.Vector3(0, 0, 0)).add(new THREE.Vector3(0, 0, 325));
+            for (let i = 0; i < 10; i++) {
+              const pos = center.clone();
+              const ang = Math.random() * Math.PI * 2;
+              const r = Math.random() * 7; // scatter radius up to 7
+              pos.x += Math.cos(ang) * r;
+              pos.z += Math.sin(ang) * r;
+              try {
+                this.experience?.world?.spawnEnemyAt(pos, 'walker');
+              } catch (e) {
+                console.warn('[Road2Academy] spawn walker (z271) failed', e);
+              }
+            }
+          } catch (e) { console.warn('[Road2Academy] z271 spawn failed', e); }
+        }
+
+        // (Intro trigger removed from location file; intro is now managed by GameManager)
       const lm = this.experience?.game?.levelManager;
       for (const wz of warpZones) {
         if (wz.triggered) continue;

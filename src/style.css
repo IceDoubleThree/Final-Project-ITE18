@@ -830,15 +830,24 @@ body
     align-items: center;
     justify-content: center;
     z-index: 10000;
-    background: rgba(0, 0, 0, 0.55);
+    background: rgba(0, 0, 0, 1); /* full black overlay */
+    opacity: 0;
+    animation: gameEndFadeIn 300ms ease forwards;
+    /* ensure it blocks input while visible */
+    pointer-events: auto;
+}
+
+@keyframes gameEndFadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
 }
 
 .game-end-board-content {
-    min-width: 320px;
+    width: 100%;
     max-width: 520px;
     padding: 18px 20px;
-    border-radius: 12px;
-    background: rgba(0, 0, 0, 0.78);
+    border-radius: 0;
+    background: transparent; /* let the overlay be the solid black */
     color: #fff;
     font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
     text-align: center;

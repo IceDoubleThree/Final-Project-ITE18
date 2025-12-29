@@ -521,16 +521,10 @@ export default class Enemy {
             this.mesh.position.set(this.body.position.x, this.body.position.y, this.body.position.z)
         }
 
-        // Update animations (only when near camera to save CPU/GPU)
+        // Update animations (always update now — do not stop when far from player)
         const dt = (this.time?.delta ?? 16) / 1000
         if (this.mixer) {
-            const camPos = this.experience?.camera?.instance?.position
-            let doUpdate = true
-            if (camPos && this.mesh && this.mesh.position) {
-                const dist = camPos.distanceTo(this.mesh.position)
-                doUpdate = dist <= 40 // only animate when within 40 units
-            }
-            if (doUpdate) this.mixer.update(dt)
+            this.mixer.update(dt)
         }
 
         // --- Combat: contact damage ---
