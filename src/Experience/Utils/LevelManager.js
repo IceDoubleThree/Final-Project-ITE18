@@ -63,6 +63,9 @@ export default class LevelManager extends EventEmitter {
         // Internal flag used by world builders to signal warp reached
         this._warpReached = false
 
+        // Flag set when the (dummy) loader finished before starting level
+        this._loaderFinished = false
+
         this.currentLevelIndex = 0
         this.currentProgress = 0 // Deprecated - use statistics tracker instead
 
@@ -231,18 +234,56 @@ export default class LevelManager extends EventEmitter {
             }
         }
 
-        // Random dummy load between 2-5s
-        const minMs = 2000
-        const maxMs = 5000
+        // Random dummy load between 2-5s (visual only)
+        const minMs = 8000
+        const maxMs = 10000
         const randMs = Math.floor(Math.random() * (maxMs - minMs + 1)) + minMs
 
-        if (typeof window !== 'undefined' && typeof window.showMiniLoader === 'function') {
-            // Show the loader but don't delay the level start; start immediately
-            try { window.showMiniLoader(randMs, `Loading ${levelData.name}...`).catch(() => {}); } catch (e) { /* ignore */ }
-            doStart()
+        // Start the level immediately (don't wait for the visual loader)
+        doStart()
+
+        // If a visual dummy loader exists, show it but do NOT delay level start.
+        // Guard with _loaderActive so we don't show it multiple times (fixes duplicate loader bug).
+        if (typeof this._loaderActive === 'undefined') this._loaderActive = false
+
+        if (typeof window !== 'undefined' && typeof window.showMiniLoader === 'function' && !this._loaderActive) {
+            this._loaderActive = true
+            // Notify listeners that the visual loader has started (allows intro to play now)
+            this.trigger && typeof this.trigger === 'function' && this.trigger('loaderStarted', levelData)
+            try {
+                const p = window.showMiniLoader(randMs, `Loading ${levelData.name}...`);
+                if (p && typeof p.then === 'function') {
+                    p.then(() => {
+                        this._loaderFinished = true
+                        this._loaderActive = false
+                        this.trigger && typeof this.trigger === 'function' && this.trigger('loaderFinished')
+                    }).catch(() => {
+                        this._loaderFinished = true
+                        this._loaderActive = false
+                        this.trigger && typeof this.trigger === 'function' && this.trigger('loaderFinished')
+                    })
+                } else {
+                    // Not a promise — treat as fire-and-forget, clear active after timeout
+                    setTimeout(() => {
+                        this._loaderFinished = true
+                        this._loaderActive = false
+                        this.trigger && typeof this.trigger === 'function' && this.trigger('loaderFinished')
+                    }, randMs)
+                }
+            } catch (e) {
+                // If calling the loader threw, clear active and set finished after timeout
+                setTimeout(() => {
+                    this._loaderFinished = true
+                    this._loaderActive = false
+                    this.trigger && typeof this.trigger === 'function' && this.trigger('loaderFinished')
+                }, randMs)
+            }
         } else {
-            // Fallback: setTimeout then start
-            setTimeout(doStart, randMs)
+            // No loader available; mark finished after visual duration so other systems can rely on flag
+            setTimeout(() => {
+                this._loaderFinished = true
+                this.trigger && typeof this.trigger === 'function' && this.trigger('loaderFinished')
+            }, randMs)
         }
     }
 

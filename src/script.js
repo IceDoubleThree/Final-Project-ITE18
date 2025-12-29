@@ -337,8 +337,9 @@ window.showMiniLoader = function(durationMs = 3000, text = 'Loading...') {
 	if (txt) txt.textContent = String(text ?? 'Loading...')
 
 	el.style.display = 'flex'
-	// allow CSS transition
-	requestAnimationFrame(() => el.classList.add('visible'))
+	// Make loader cover screen immediately
+	el.style.background = '#000'
+	el.classList.add('visible')
 
 	return new Promise((resolve) => {
 		const ms = Math.max(0, Number(durationMs) || 0)
@@ -346,18 +347,26 @@ window.showMiniLoader = function(durationMs = 3000, text = 'Loading...') {
 		const timeObj = window.experience?.time
 		const previouslyPaused = timeObj ? Boolean(timeObj.paused) : true
 
-		// Pause the main time loop so updates/physics/timers stop
+		// Pause the main time loop on the next animation frame so the new
+		// location can render at least once before the loop is paused.
 		try {
-			if (timeObj && !previouslyPaused && typeof timeObj.pause === 'function') {
-				timeObj.pause()
-				// Remember that we paused it here
-				el._miniLoaderPreviouslyPaused = false
-			} else if (timeObj) {
-				// Already paused before showing
-				el._miniLoaderPreviouslyPaused = true
-			}
+			requestAnimationFrame(() => {
+				try {
+					if (timeObj && !previouslyPaused && typeof timeObj.pause === 'function') {
+						timeObj.pause()
+						// Remember that we paused it here
+						el._miniLoaderPreviouslyPaused = false
+					} else if (timeObj) {
+						// Already paused before showing
+						el._miniLoaderPreviouslyPaused = true
+					}
+				} catch (e) {
+					console.warn('Failed to pause time for mini loader', e)
+					el._miniLoaderPreviouslyPaused = true
+				}
+			})
 		} catch (e) {
-			console.warn('Failed to pause time for mini loader', e)
+			console.warn('Failed to schedule pause for mini loader', e)
 			el._miniLoaderPreviouslyPaused = true
 		}
 

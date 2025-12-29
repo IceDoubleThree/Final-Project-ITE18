@@ -292,6 +292,33 @@ body
     opacity: 0;
 }
 
+/* --- Intro Overlay (center-screen title) --- */
+.intro-overlay {
+    position: fixed;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(0, 0, 0, 0.75);
+    z-index: 3900; /* Above most UI overlays */
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.3s ease;
+}
+.intro-overlay.visible {
+    opacity: 1;
+    pointer-events: auto;
+}
+.intro-title {
+    font-family: 'DESIGNER', 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    color: #ffffff;
+    font-size: 56px;
+    font-weight: 800;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    text-align: center;
+}
+
 @keyframes slideUp {
     from {
         opacity: 0;

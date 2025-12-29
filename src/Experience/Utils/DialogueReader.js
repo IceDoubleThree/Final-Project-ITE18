@@ -291,8 +291,10 @@ export default class DialogueReader extends EventEmitter {
      * @param {Array<string|object>} entries
      * @param {number} startDelay - ms to wait before starting the sequence
      */
-    async displaySubtitleSequence(entries = [], startDelay = 0) {
+    async displaySubtitleSequence(entries = [], startDelay = 0, opts = {}) {
         if (!Array.isArray(entries) || entries.length === 0) return
+
+        const force = opts && opts.force
 
         const waitForIdle = () => new Promise((resolve) => {
             if (!this.isDialogueActive) return resolve()
@@ -304,7 +306,7 @@ export default class DialogueReader extends EventEmitter {
             }, 150)
         })
 
-        await waitForIdle()
+        if (!force) await waitForIdle()
         if (startDelay > 0) await new Promise(r => setTimeout(r, startDelay))
 
         for (const entry of entries) {

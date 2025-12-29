@@ -7,6 +7,10 @@ export const EnemyTypes = Object.freeze({
     RUNNER: 'runner',
 })
 
+// Enemy stat constants
+const RUNNER_MAX_HP = 3
+const WALKER_MAX_HP = 8
+
 // Collision filtering (cannon-es)
 // Enemies should pass through other enemies, but collide with everything else.
 const ENEMY_COLLISION_GROUP = 1 << 2
@@ -25,8 +29,8 @@ export default class Enemy {
 
         // Common stats (future difficulty scaling can modify these)
         this.baseDamage = this.type === EnemyTypes.RUNNER ? 2 : 1
-        // Walkers: 10 HP (per design), Runners: lower HP but higher mobility.
-        this.maxHp = this.type === EnemyTypes.RUNNER ? 5 : 10
+        // Walkers and Runners HP (use constants defined above)
+        this.maxHp = this.type === EnemyTypes.RUNNER ? RUNNER_MAX_HP : WALKER_MAX_HP
         this.hp = this.maxHp
 
         // Movement tuning
@@ -35,13 +39,13 @@ export default class Enemy {
 
         this.speeds = {
             walkerWalk: 3.0,
-            walkerAggro: 4.0,
-            runnerRun: 9.0,
-            runnerWalk: 3.2,
+            walkerAggro: 5.0,
+            runnerRun: 8.0,
+            runnerWalk: 5,
         }
 
         this.aggroRadius = 5
-        this.runnerSprintMs = 8000
+        this.runnerSprintMs = 20000
 
         // Combat (placeholder, future difficulty mods can adjust these)
         this.attack = {

@@ -29,7 +29,7 @@ export default function buildRoad2Academy(state) {
       if (child.userData && child.userData.is_level_warp) {
         const wp = new THREE.Vector3();
         child.getWorldPosition(wp);
-        const radius = 2;
+        const radius = 10;
         warpZones.push({ position: wp.clone(), radius, triggered: false, node: child });
         try {
           const portal = new Portal(this, wp.clone(), 'Academy', 'Warp', 0xffffff, {
@@ -286,6 +286,183 @@ export default function buildRoad2Academy(state) {
       // Check warp zones each frame and trigger level objective when player enters
       const playerPos = this.player?.mesh?.position;
       if (!playerPos) return;
+
+      // Detection: when player crosses the Z plane at z = 93 (from below
+      // to >=93), spawn 5 walkers once at random positions within a 5-unit
+      // radius centered at (0,0,125) (relative to location origin).
+      try {
+        if (!state._walkerSpawned) {
+          const lastZ = typeof state._lastPlayerZ === 'number' ? state._lastPlayerZ : playerPos.z;
+          if (lastZ < 93 && playerPos.z >= 93) {
+            state._walkerSpawned = true;
+            const center = (state.origin ? state.origin.clone() : new THREE.Vector3(0, 0, 0)).add(new THREE.Vector3(0, 0, 125));
+            for (let i = 0; i < 5; i++) {
+              const angle = Math.random() * Math.PI * 2;
+              const radius = Math.random() * 5; // up to 5 units
+              const pos = center.clone();
+              pos.x += Math.cos(angle) * radius;
+              pos.z += Math.sin(angle) * radius;
+              // Use world spawn helper
+              try {
+                this.experience?.world?.spawnEnemyAt(pos, 'walker');
+              } catch (e) {
+                console.warn('[Road2Academy] spawn walker failed', e);
+              }
+            }
+            // Show a short subtitle sequence informing the player
+            try {
+              const dialogue = this.experience?.dialogue;
+              const seq = [
+                { text: "We've spawned some enemies for you.", duration: 3000 },
+                { text: 'Press Left Click to SHOOT, and Right Click to AIM', duration: 5000 }
+              ];
+              if (dialogue && typeof dialogue.displaySubtitleSequence === 'function') {
+                dialogue.displaySubtitleSequence(seq, 0, { force: true });
+              } else {
+                const subEl = document.getElementById('subtitle');
+                if (subEl) {
+                  subEl.textContent = seq[0].text;
+                  subEl.classList.add('visible');
+                  setTimeout(() => {
+                    subEl.textContent = seq[1].text;
+                    setTimeout(() => subEl.classList.remove('visible'), seq[1].duration || 3000);
+                  }, seq[0].duration || 3000);
+                }
+              }
+            } catch (e) {
+              console.warn('[Road2Academy] subtitle sequence failed', e);
+            }
+          }
+          state._lastPlayerZ = playerPos.z;
+        } else {
+          state._lastPlayerZ = playerPos.z;
+        }
+      } catch (e) {
+        console.warn('[Road2Academy] walker detection error', e);
+      }
+
+      // Additional Z-crossing triggers
+      try {
+        const lastZ = typeof state._lastPlayerZ === 'number' ? state._lastPlayerZ : playerPos.z;
+
+        // z = 160 subtitles
+        if (!state._z160Triggered && playerPos.z >= 160) {
+          state._z160Triggered = true;
+          try {
+            const dialogue = this.experience?.dialogue;
+            const seq = [
+              { text: 'The path seems to be blocked', duration: 3500 },
+              { text: 'Hmm, try running towards those wooden barriers.', duration: 4500 }
+            ];
+            if (dialogue && typeof dialogue.displaySubtitleSequence === 'function') {
+              dialogue.displaySubtitleSequence(seq, 0, { force: true });
+            } else {
+              const subEl = document.getElementById('subtitle');
+              if (subEl) {
+                subEl.textContent = seq[0].text;
+                subEl.classList.add('visible');
+                setTimeout(() => {
+                  subEl.textContent = seq[1].text;
+                  setTimeout(() => subEl.classList.remove('visible'), seq[1].duration || 3000);
+                }, seq[0].duration || 3000);
+              }
+            }
+          } catch (e) { console.warn('[Road2Academy] z160 subtitle failed', e); }
+        }
+
+        // z = 187 subtitles
+        if (!state._z187Triggered && playerPos.z >= 187) {
+          state._z187Triggered = true;
+          try {
+            const dialogue = this.experience?.dialogue;
+            const seq = [
+              { text: 'Wooden barriers will launch you in the air when you run towards it', duration: 4500 },
+              { text: "Why does it do that? I dunno, ask the developer.", duration: 4000 }
+            ];
+            if (dialogue && typeof dialogue.displaySubtitleSequence === 'function') {
+              dialogue.displaySubtitleSequence(seq, 0, { force: true });
+            } else {
+              const subEl = document.getElementById('subtitle');
+              if (subEl) {
+                subEl.textContent = seq[0].text;
+                subEl.classList.add('visible');
+                setTimeout(() => {
+                  subEl.textContent = seq[1].text;
+                  setTimeout(() => subEl.classList.remove('visible'), seq[1].duration || 3000);
+                }, seq[0].duration || 3000);
+              }
+            }
+          } catch (e) { console.warn('[Road2Academy] z187 subtitle failed', e); }
+        }
+
+        // z = 228: spawn 30 runners in sequence every 1s at 0,0,330
+        if (!state._z228Triggered && playerPos.z >= 228) {
+          state._z228Triggered = true;
+          try {
+            console.log('[Road2Academy] z228 trigger fired, starting runner spawns')
+            // Show subtitles about runners
+            const dialogue = this.experience?.dialogue;
+            const seq = [
+              { text: 'Enemy type: Runners. They are fast little buggers', duration: 3500 },
+              { text: 'Clear the next wave of enemies', duration: 3500 }
+            ];
+            if (dialogue && typeof dialogue.displaySubtitleSequence === 'function') {
+              dialogue.displaySubtitleSequence(seq, 0, { force: true });
+            } else {
+              const subEl = document.getElementById('subtitle');
+              if (subEl) {
+                subEl.textContent = seq[0].text;
+                subEl.classList.add('visible');
+                setTimeout(() => {
+                  subEl.textContent = seq[1].text;
+                  setTimeout(() => subEl.classList.remove('visible'), seq[1].duration || 3000);
+                }, seq[0].duration || 3000);
+              }
+            }
+
+            // Start spawning 15 runners in batches of 3 every 5 seconds
+            const center = (state.origin ? state.origin.clone() : new THREE.Vector3(0, 0, 0)).add(new THREE.Vector3(0, 0, 330));
+            let spawned = 0;
+            state._runnerSpawnCount = 0;
+            const spawnPerBatch = 3;
+            const totalToSpawn = 15;
+
+            const doSpawnBatch = () => {
+              for (let b = 0; b < spawnPerBatch && spawned < totalToSpawn; b++) {
+                spawned++;
+                state._runnerSpawnCount = spawned;
+                const pos = center.clone();
+                const ang = Math.random() * Math.PI * 2;
+                const r = Math.random() * 2;
+                pos.x += Math.cos(ang) * r;
+                // add a random negative z offset up to 10 units so spawns can be behind the center
+                pos.z += Math.sin(ang) * r - (Math.random() * 10);
+                try {
+                  this.experience?.world?.spawnEnemyAt(pos, 'runner');
+                } catch (e) {
+                  console.warn('[Road2Academy] spawn runner failed', e);
+                }
+              }
+            };
+
+            // Immediate first batch
+            doSpawnBatch();
+
+            state._runnerInterval = setInterval(() => {
+              if (spawned >= totalToSpawn) {
+                clearInterval(state._runnerInterval);
+                state._runnerInterval = null;
+                return;
+              }
+              doSpawnBatch();
+            }, 5000);
+          } catch (e) { console.warn('[Road2Academy] z228 spawn failed', e); }
+        }
+      } catch (e) {
+        console.warn('[Road2Academy] z-crossing checks failed', e);
+      }
+
+      // (Intro trigger removed from location file; intro is now managed by GameManager)
       const lm = this.experience?.game?.levelManager;
       for (const wz of warpZones) {
         if (wz.triggered) continue;
@@ -372,7 +549,15 @@ export default function buildRoad2Academy(state) {
       }
     },
     cleanup: () => {
-      // nothing special yet
+      // Clear any runner spawn interval started by z=228 trigger
+      try {
+        if (state._runnerInterval) {
+          clearInterval(state._runnerInterval);
+          state._runnerInterval = null;
+        }
+      } catch (e) {
+        // ignore
+      }
     }
   };
 }

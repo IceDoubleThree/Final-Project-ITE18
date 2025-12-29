@@ -51,6 +51,9 @@ export default class GameManager {
     // Pass statistics tracker reference to LevelManager
     this.levelManager.statistics = this.statistics;
 
+    // Track whether we've shown the Road->Academy intro overlay (fallback local flag)
+    this._roadIntroShown = false;
+
     // --- Wire LevelManager signals to World ---
     // Attach handlers regardless of whether World exists yet. Each handler
     // resolves `this.experience.world` at runtime so late World creation
@@ -61,11 +64,20 @@ export default class GameManager {
         this.timerPaused = false;
         this.timerFrozen = false;
         console.log('⏱️ Total game time resumed - Level started');
+        // (intro is handled on loaderStarted instead)
         const worldNow = this.experience?.world;
         console.log('[GameManager] forward levelStart -> world present?', !!worldNow, 'onLevelStart?', typeof (worldNow && worldNow.onLevelStart));
         if (worldNow && typeof worldNow.onLevelStart === 'function') {
           try { worldNow.onLevelStart(levelData); } catch (e) { console.warn('[GameManager] world.onLevelStart threw', e); }
         }
+      });
+
+      // Intro flow: when the dummy visual loader starts, run the intro once, then after 3s play subtitle sequence
+      this.levelManager.on('loaderStarted', (levelData) => {
+        // Loader start is no longer used to trigger the Road2Academy intro;
+        // intro is centrally triggered in GameManager.update() based on
+        // the total game timer (2 seconds). This handler is intentionally
+        // left empty to avoid duplicate triggers.
       });
 
       this.levelManager.on('spawnItems', (count) => {
@@ -253,6 +265,12 @@ export default class GameManager {
 
     // Call stop() AFTER showing the board (to preserve statistics for display)
     this.stop();
+
+    // Reset the one-time intro flag so a new run can show the intro again
+    try {
+      if (this.experience && this.experience._roadIntroShown) this.experience._roadIntroShown = false;
+    } catch (e) {}
+    this._roadIntroShown = false;
   }
 
   // Legacy method for compatibility - delegates to levelManager
@@ -393,6 +411,35 @@ export default class GameManager {
       return
     }
 
+    // Trigger the one-time intro once total_game_time >= 2000ms
+    if (!this._roadIntroShown && Number.isFinite(this.total_game_time) && this.total_game_time >= 2000) {
+      try {
+        // Mark as shown so we don't re-trigger
+        this._roadIntroShown = true;
+        if (this.experience) this.experience._roadIntroShown = true;
+
+        // Show title overlay, then after it hides wait 3s and play subtitle sequence
+        this.showIntroOverlay('Simulation Start', []).then(() => {
+          setTimeout(() => {
+            const dialogue = this.experience?.dialogue;
+            const seq = [{ text: 'Objective: Reach the Endpoint', duration: 4000 }];
+            if (dialogue && typeof dialogue.displaySubtitleSequence === 'function') {
+              dialogue.displaySubtitleSequence(seq, 0, { force: true });
+            } else {
+              const subEl = document.getElementById('subtitle');
+              if (subEl) {
+                subEl.textContent = seq[0].text;
+                subEl.classList.add('visible');
+                setTimeout(() => subEl.classList.remove('visible'), seq[0].duration || 3000);
+              }
+            }
+          }, 3000);
+        }).catch((e) => console.warn('[GameManager] showIntroOverlay promise rejected', e));
+      } catch (e) {
+        console.warn('[GameManager] intro trigger failed', e);
+      }
+    }
+
     const d = Number.isFinite(deltaMs) ? deltaMs : 0;
     if (!this.timerPaused) {
       this.total_game_time += Math.max(0, d);
@@ -463,6 +510,53 @@ export default class GameManager {
     const mm = String(minutes).padStart(2, "0");
     const ss = String(seconds).padStart(2, "0");
     return `${mm}:${ss}`;
+  }
+
+  // Show a centered intro overlay with a title and optional subtitle sequence
+  showIntroOverlay(title, subtitleSequence = []) {
+    return new Promise((resolve) => {
+      try {
+        const el = document.getElementById('intro-overlay');
+        if (!el) return resolve();
+        const titleEl = el.querySelector('.intro-title');
+        if (titleEl) titleEl.textContent = String(title ?? '');
+        el.style.display = 'flex';
+        // Force next frame then add visible for transition
+        requestAnimationFrame(() => el.classList.add('visible'));
+
+        const dialogue = this.experience?.dialogue;
+        // After a short delay, show subtitle(s) if provided
+        setTimeout(() => {
+          if (subtitleSequence && subtitleSequence.length > 0) {
+            if (dialogue && typeof dialogue.displaySubtitleSequence === 'function') {
+              try {
+                dialogue.displaySubtitleSequence(subtitleSequence, 600);
+              } catch (e) { console.warn('[GameManager] dialogue.displaySubtitleSequence threw', e); }
+            } else {
+              // Fallback to subtitle overlay (show first item only)
+              const sub = subtitleSequence[0];
+              const subEl = document.getElementById('subtitle');
+              if (subEl) {
+                subEl.textContent = String(sub.text || '');
+                subEl.classList.add('visible');
+                setTimeout(() => subEl.classList.remove('visible'), sub.duration || 3000);
+              }
+            }
+          }
+        }, 700);
+
+        // Hide overlay after subtitles have finished (sum durations)
+        const totalDur = (subtitleSequence || []).reduce((acc, s) => acc + (s.duration || 3000), 0);
+        const hideAfter = 700 + Math.max(1200, totalDur) + 600;
+        setTimeout(() => {
+          el.classList.remove('visible');
+          setTimeout(() => {
+            el.style.display = 'none';
+            resolve();
+          }, 300);
+        }, hideAfter);
+      } catch (e) { console.warn('[GameManager] showIntroOverlay error', e); resolve(); }
+    })
   }
 
   // --- STATISTICS ACCESS METHODS ---
