@@ -481,7 +481,7 @@ body
 .main-menu-bg {
     position: absolute;
     inset: 0;
-    background-image: url('./textures/gun.png');
+    background-image: url('/textures/gun.png');
     /* Center, then shift left 20px and down 20px */
     background-position: calc(50% - 120px) calc(50% + 110px);
     background-repeat: no-repeat;
@@ -1071,7 +1071,7 @@ body
     left: 50%;
     width: 32px;
     height: 32px;
-    background: transparent url('./textures/crosshair.png') center / contain no-repeat;
+    background: transparent url('/textures/crosshair.png') center / contain no-repeat;
     border: none;
     border-radius: 0;
     transform: translate(-50%, -50%);
@@ -1138,7 +1138,7 @@ body
     left: 50%;
     width: 32px;
     height: 32px;
-    background: transparent url('./textures/crosshair.png') center / contain no-repeat;
+    background: transparent url('/textures/crosshair.png') center / contain no-repeat;
     border: none;
     border-radius: 0;
     transform: translate(-50%, -50%);

@@ -130,3 +130,4 @@ Desktop.ini
 dist/
 dist-ssr/
 *.local
+.vercel
