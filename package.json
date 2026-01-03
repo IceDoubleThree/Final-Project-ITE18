@@ -2,7 +2,7 @@
   "name": "academy-of-spent-shells",
   "author": "Francese Angelou Rabago",
   "private": true,
-  "version": "demo-v1.0.0",
+  "version": "demo-v1.0.1",
   "type": "module",
   "scripts": {
     "dev": "vite",

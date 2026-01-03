@@ -760,11 +760,13 @@ export default class Player {
 
         this.mesh.castShadow = true
         this.mesh.receiveShadow = true
-        this.mesh.position.y = 5
+        this.mesh.position.y = -0.9
         this.scene.add(this.mesh)
 
         const bbox = new THREE.Box3().setFromObject(this.mesh)
-        this.modelCenterOffset = bbox.getCenter(new THREE.Vector3()).sub(this.mesh.position)
+        const physicsBottom = this.physicsConfig.offsetY - this.physicsConfig.height * 0.5
+        // Offset the rendered mesh so its local bounding-box minimum sits on the physics capsule bottom
+        this.modelCenterOffset = new THREE.Vector3(0, bbox.min.y - physicsBottom, 0)
 
         this.setupAnimations()
     }

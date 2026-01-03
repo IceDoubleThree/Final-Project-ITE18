@@ -11,6 +11,7 @@ export default function buildRoad2Academy(state) {
     // Rotate model -90 degrees in the XZ plane (around Y axis)
     model.rotation.y = Math.PI * 0.5;
     model.position.copy(state.origin);
+    model.position.y += 0.5; // lift the entire location model slightly upward
     state.group.add(model);
 
     model.updateMatrixWorld(true);

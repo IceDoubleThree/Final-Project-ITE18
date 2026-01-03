@@ -61,3 +61,10 @@ npm run build
 - **Audio:** Project-local `SoundHandler` in `src/Experience/Utils/SoundHandler.js` for SFX/BGM management
 - **Build & Dev:** Vite / npm
 - **Version Control & Deploy:** git, GitHub; deploy via Vercel or GitHub Pages (see Deployment below)
+
+### Changelog
+
+v1.0.1 - demo
+
+Major resource optimizations
+- models and textures have been compressed to reduce file size.
