@@ -121,7 +121,7 @@ export default function buildAcademy(state) {
       };
 
       // Repeat the textures across the 200x200 plane.
-      const repeat = 10;
+      const repeat = 30;
       setRepeat(baseColor, repeat);
       setRepeat(normal, repeat);
       setRepeat(roughness, repeat);

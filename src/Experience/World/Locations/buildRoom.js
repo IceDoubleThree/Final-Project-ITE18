@@ -8,9 +8,8 @@ export default function buildRoom(state) {
 
   if (resource?.scene) {
     model = resource.scene;
-    model.scale.set(1.3, 1.3, 1.3);
+    model.scale.set(1, 1, 1);
     model.position.copy(state.origin);
-    model.position.y = -0.2;
     state.group.add(model);
 
     model.traverse((child) => {
